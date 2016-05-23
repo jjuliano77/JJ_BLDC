@@ -39,8 +39,7 @@ BldcPWM::BldcPWM(uint8_t mode = PWM_UNIPOLAR, boolean alignment = PWM_EDGE, uint
   */
   
 //*****************************************************************************************  
-//********Need to check everything below!! Copy & pasted so could be wrong*****************
-  
+ 
   FTM0_MODE |= FTM_MODE_WPDIS; //Disable Write Protection - enables changes to QUADEN, DECAPEN, etc.
   FTM0_MODE |= FTM_MODE_FTMEN; //FTMEN is bit 0 set to 1
   FTM0_QDCTRL &=~FTM_QDCTRL_QUADEN;  //Disable Encoder mode
