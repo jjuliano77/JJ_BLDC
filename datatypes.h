@@ -87,20 +87,3 @@ typedef struct {
   unsigned int minBusVoltage;    //Volts 
   unsigned int maxTemp_FETs;     //degC
 } mc_limits;
-
-//This may be useful eventualy, Just put it in here for referance
-//From https://github.com/vedderb/bldc/blob/master/datatypes.h
-// Logged fault data
-typedef struct {
-	//mc_fault_code fault; //have to figure this out
-	float current;
-	float current_filtered;
-	float voltage;
-	float duty;
-	float rpm;
-	int tacho;
-	int tim_pwm_cnt;
-	int tim_samp_cnt;
-	int comm_step;
-	float temperature;
-} fault_data;
