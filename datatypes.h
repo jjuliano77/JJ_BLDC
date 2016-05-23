@@ -2,6 +2,8 @@
 //cleaned up if used at all.
         
 // Data types
+// Originally idea came from https://github.com/vedderb/bldc/blob/master/datatypes.h
+// but hese have been changed quite a bit now
 
 typedef enum {
    FB_MODE_HALL = 0,
@@ -9,7 +11,6 @@ typedef enum {
    FB_MODE_BEMF
 } mc_fb_mode;
 
-//From https://github.com/vedderb/bldc/blob/master/datatypes.h
 typedef enum {
    MC_STATE_INIT = 0,
    MC_STATE_OFF,
@@ -23,7 +24,6 @@ typedef enum {
    MC_STATE_FAULT
 } mc_state;
 
-//From https://github.com/vedderb/bldc/blob/master/datatypes.h
 typedef enum {
 	CONTROL_MODE_DUTY = 0,
 	CONTROL_MODE_SPEED,
@@ -33,18 +33,16 @@ typedef enum {
 	CONTROL_MODE_NONE
 } mc_control_mode;
 
-//This may be useful eventualy, Just put it in here for referance
-//From https://github.com/vedderb/bldc/blob/master/datatypes.h
 typedef enum {
 	FAULT_CODE_NONE = 0,        // 0
 	FAULT_CODE_OVER_VOLTAGE,    // 1
 	FAULT_CODE_UNDER_VOLTAGE,   // 2
 	FAULT_CODE_DRV8302,         // 3
-        FAULT_CODE_DRV8302_OC,      // 4
+    FAULT_CODE_DRV8302_OC,      // 4
 	FAULT_CODE_ABS_SOFT_OC,     // 5
 	FAULT_CODE_OVER_TEMP_FET,   // 6
 	FAULT_CODE_OVER_TEMP_MOTOR,  // 7
-        FAULT_CODE_HALL_SENSOR      // 8
+    FAULT_CODE_HALL_SENSOR      // 8
 } mc_fault_code;
 
 //Yet another idea on how to handle fault codes
@@ -78,6 +76,7 @@ typedef struct {
   float configVersion;  //We can check that this matches to see if data has been written before  
 } mc_configData;
 
+//Limit config data to be stored in EEPROM 
 typedef struct {
   unsigned int maxCurrent_HW;    //Amps
   unsigned int maxCurrent_motor; //Amps
