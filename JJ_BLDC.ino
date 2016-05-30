@@ -1,5 +1,6 @@
 #include "IntervalTimer.h" //I am pretty sure we are going to need this
 #include "datatypes.h"     //Useful datatypes. Based on VESC code
+#include "defaults.h"
 #include "ADC.h"           //Pedvide's Teensy 3.1 ADC library
 #include "BldcPWM.h"       //My PWM library
 #include "PID_v1.h"           //Use PID library for Current and speed control loops
@@ -7,8 +8,8 @@
 #include <SerialCommand.h>
 #include <EEPROM.h>
 
-#define FW_VERSION 0.63
-#define CONFIG_VERSION 1.00
+#define FW_VERSION 0.65
+#define CONFIG_VERSION 1.01
 
 //**********************
 //Pin Definitions - got to start somewhere
@@ -64,44 +65,9 @@
 #define DIR_FORWARD 1
 #define DIR_REVERSE 0
 
-#define DEFAULT_CONTROL_MODE 0 //0 = straight duty cycle control
-
 #define BRIDGE_STATE_ALIGN 10
 #define BRIDGE_STATE_BRAKE 11
 #define BRIDGE_STATE_COAST 12
-
-#define MAX_THROTTLE_OUTPUT 3000  //This needs to be configurable
-#define MIN_THROTTLE          10  //This needs to be configurable
-#define MAX_MOTOR_RPM       2000  //This needs to be configurable
-#define STOPPED_RPM_THRESH  10    //At what RPM do transition to STOPPED
-
-#define  MIN_DUTY  0.05           //5%
-#define  MAX_DUTY  0.95           //95%     
-#define  MIN_DUTY_COUNTS  200  //This isn't working for some reason -> (2 ^ PWM_OUT_RESOLUTION) * MIN_DUTY //This might come in handy
-#define  MAX_DUTY_COUNTS  3900 //This isn't working for some reason -> (2 ^ PWM_OUT_RESOLUTION) * MAX_DUTY //This might come in handy
-
-//******************
-// Limits
-#define SW_OC_HARD_LIMIT  300      //default SW overcurrent limit in Amps ***Not working right yet!
-#define SW_OC_SOFT_LIMIT  60       //default "soft" current limit in Amps
-#define HW_OC_LIMIT       100      //default HW (DRV8302) overcurrent limit in Amps
-#define SW_OV_LIMIT       42       //software over voltage limit 
-#define WARNING_FET_TEMP  60       //Temperature where we should lower the SW current limit
-#define MAX_FET_TEMP      80       //Max allowed FET temp
-                          
-#define POLE_PAIRS       6     //This also needs to be a software setting eventually
-#define ALIGNMENT_DUTY 100     //??% - also should be software setting
-
-//1 second wait now just for testing
-#define ALIGNMENT_TIMOUT 50000  //Time to wait for alignment in uS
-
-#define RUNNING_AVG_BLOCK_SIZE 100                   
-//*******************
-//Timing config values
-#define PWMFREQ 8000            //PWM frequency in hz. This should be a configurable parameter eventually
-#define PWM_PERIOD 1000000 * (1 / PWMFREQ)
-#define SERIAL_OUT_PERIOD 10    //mS
-#define CONTROL_LOOP_PERIOD 1000 //uS
 
 //PDB Defines
 #define PDB_CONFIG (PDB_SC_TRGSEL(15) | PDB_SC_PDBEN | PDB_SC_PDBIE \
@@ -197,7 +163,6 @@ mc_fault_code faultCode;
 mc_fb_mode feedbackMode;
 mc_faultStatus faultStatus; //new struct to hold faults
 mc_configData configData;
-mc_limits limits;
 
 RunningAverage fetTemp_RA(RUNNING_AVG_BLOCK_SIZE);
 RunningAverage motorCurrent_RA(RUNNING_AVG_BLOCK_SIZE);
@@ -252,7 +217,7 @@ void setup() {
   
   //the [ * 20 ] is just a fudge factor
   //need to figure out real scaling still
-  analogWrite(HW_OC_ADJ, HW_OC_LIMIT * 20); //rough guess at 40A,(60 = 0.48V) WRONG!! I'll figure it out later
+  analogWrite(HW_OC_ADJ, DRV_OC_LIMIT * 20); //rough guess at 40A,(60 = 0.48V) WRONG!! I'll figure it out later
                                             // From datasheet -> Ioc = Vds/Rds   
   Serial.begin(115200);
   //delay(1000);
@@ -394,7 +359,7 @@ void controlLoop(){
   
       //Check For Over Temp
       //TO DO: Need to implement a WARNING_TEMP that simply reduces the SW current limit (once that works)    
-      if(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()) > MAX_FET_TEMP){   //Try this with RA filtered readings
+      if(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()) > configData.maxFetTemp){   //Try this with RA filtered readings
         //Oh crap, getting hot!
         faultCode = FAULT_CODE_OVER_TEMP_FET;
         //Need to add test for this fault in other areas
@@ -450,13 +415,23 @@ void loadConfig(){
     configData.throttleOut_min = MIN_THROTTLE;
     configData.dutyCycle_max = MAX_DUTY_COUNTS;
     configData.dutyCycle_min = MIN_DUTY_COUNTS;
-    configData.polePairs = 6;
+    configData.polePairs = POLE_PAIRS;
     configData.pwmOutFreq = PWMFREQ;
     configData.controlMode = DEFAULT_CONTROL_MODE;
-    configData.currentControl_kP = 50; //should probably be defined up top
-    configData.currentControl_kI = 0;  //should probably be defined up top
-    configData.currentControl_kD = 0;  //should probably be defined up top
-    configData.configVersion = CONFIG_VERSION;
+    
+	configData.currentControl_kP = DEFAULT_KP;
+    configData.currentControl_kI = DEFAULT_KP;
+    configData.currentControl_kD = DEFAULT_KP;
+    
+	configData.maxCurrent_HW = DRV_OC_LIMIT;
+	configData.maxCurrent_motor = MOTOR_OC_LIMIT;
+	configData.maxCurrent_batt = BATT_OC_LIMIT;
+	configData.maxCurrent_regen = REGEN_OC_LIMIT;
+	configData.maxBusVoltage = BUS_OV_LIMIT;
+	configData.minBusVoltage = BUS_UV_LIMIT;
+	configData.maxFetTemp = MAX_FET_TEMP;
+	//Write current config version
+	configData.configVersion = CONFIG_VERSION;
   }else{
     Serial.println("Config data found!");
   } 
@@ -507,7 +482,7 @@ int calcDutyCycle(){
       break;
     case CONTROL_MODE_CURRENT:
       //Map throttle to current range.Probably need to do this mapping better!!
-      motorCurrentSetpoint = map(throttle,0,MAX_THROTTLE_OUTPUT,0,SW_OC_SOFT_LIMIT); //*11-29 NEEDS TO REFLECT CHANGE TO mA
+      motorCurrentSetpoint = map(throttle,0,MAX_THROTTLE_OUTPUT,0,MOTOR_OC_LIMIT); //*11-29 NEEDS TO REFLECT CHANGE TO mA
       //motorCurrentSetpoint = throttle; //lets try this real quick
       currentPID.Compute();
       duty = motorCurrentDuty;
@@ -1139,6 +1114,7 @@ void writeBridgeState(uint8_t pos){
   }
 }
 
+//*******************************************************************
 //*********** Serial command functions start here *******************
 
 //////////////////////////////////////////////
@@ -1186,6 +1162,10 @@ void cmdPrintConfig(void){
   Serial.println(configData.currentControl_kI);
   Serial.print("Current PID kD = ");
   Serial.println(configData.currentControl_kD);
+  Serial.print("Max HW Current = ");
+  Serial.println(configData.maxCurrent_HW);
+  Serial.print("Max Motor Current = ");
+  Serial.println(configData.maxCurrent_motor);
 //  Serial.print("Config Version = ");
 //  Serial.println(configData.configVersion);
 }

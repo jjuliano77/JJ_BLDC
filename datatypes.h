@@ -72,10 +72,19 @@ typedef struct {
   float currentControl_kP;
   float currentControl_kI;
   float currentControl_kD;
+  //Limits
+  unsigned int maxCurrent_HW;    //Amps
+  unsigned int maxCurrent_motor; //Amps
+  unsigned int maxCurrent_batt;  //Amps
+  unsigned int maxCurrent_regen; //Amps
+  unsigned int maxBusVoltage;    //Volts  
+  unsigned int minBusVoltage;    //Volts 
+  unsigned int maxFetTemp;     	 //degC
   //Version info
   float configVersion;  //We can check that this matches to see if data has been written before  
 } mc_configData;
 
+/*//Old stand alone limit Struct
 //Limit config data to be stored in EEPROM 
 typedef struct {
   unsigned int maxCurrent_HW;    //Amps
@@ -86,3 +95,4 @@ typedef struct {
   unsigned int minBusVoltage;    //Volts 
   unsigned int maxTemp_FETs;     //degC
 } mc_limits;
+*/
