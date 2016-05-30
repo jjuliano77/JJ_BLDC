@@ -215,16 +215,17 @@ void setup() {
 
   analogWriteResolution(12);
   
-  //the [ * 20 ] is just a fudge factor
-  //need to figure out real scaling still
-  analogWrite(HW_OC_ADJ, DRV_OC_LIMIT * 20); //rough guess at 40A,(60 = 0.48V) WRONG!! I'll figure it out later
-                                            // From datasheet -> Ioc = Vds/Rds   
   Serial.begin(115200);
   //delay(1000);
   startupBlink();
   
-  loadConfig();                             //Load configuration from EEPROM 
-  
+  loadConfig();  //Load configuration from EEPROM 
+
+  //the [ * 20 ] is just a fudge factor
+  //need to figure out real scaling still
+  analogWrite(HW_OC_ADJ, configData.maxCurrent_HW * 20); //rough guess at 40A,(60 = 0.48V) WRONG!! I'll figure it out later
+                                             // From datasheet -> Ioc = Vds/Rds   
+ 
   //Setup serial command callbacks
   sCmd.addCommand("v", cmdGetVersion);      //Report the firmware version
   sCmd.addCommand("s", cmdStream);          //Start/Stop streaming out readings
@@ -273,10 +274,10 @@ void setup() {
 //  regenEnabled = true;                                          
                                             
   //Init PID loops
-  currentPID.SetOutputLimits(0, MAX_DUTY_COUNTS);
+  currentPID.SetOutputLimits(0, configData.dutyCycle_max);
   currentPID.SetSampleTime(1);
   currentPID.SetMode(AUTOMATIC);
-//  speedPID.SetOutputLimits(0, MAX_DUTY_COUNTS);
+//  speedPID.SetOutputLimits(0, configData.dutyCycle_max);
 //  speedPID.SetSampleTime(1);
 //  speedPID.SetMode(AUTOMATIC);
   
@@ -342,7 +343,7 @@ void controlLoop(){
         motorDirection = DIR_FORWARD;
       }
       //check for throttle input
-      if(throttle >= MIN_THROTTLE){
+      if(throttle >= configData.throttleOut_min){
         controllerState = MC_STATE_DRIVE;
         //tmpDuty = calcDutyCycle();
       }
@@ -369,7 +370,7 @@ void controlLoop(){
       }
   
       //Check if we are over minumum allowed duty cycle
-      if(tmpDuty < 200){ //MIN_DUTY_COUNTS){
+      if(tmpDuty < 200){ //configData.dutyCycle_min){
         tmpDuty = 0;                             
       }
  
@@ -411,21 +412,21 @@ void loadConfig(){
     Serial.println("No config found! Using default values");
     
     //Set defaults
-    configData.throttleOut_max = MAX_THROTTLE_OUTPUT;
-    configData.throttleOut_min = MIN_THROTTLE;
-    configData.dutyCycle_max = MAX_DUTY_COUNTS;
-    configData.dutyCycle_min = MIN_DUTY_COUNTS;
-    configData.polePairs = POLE_PAIRS;
-    configData.pwmOutFreq = PWMFREQ;
-    configData.controlMode = DEFAULT_CONTROL_MODE;
+    configData.throttleOut_max = MAX_THROTTLE_OUTPUT; //used
+    configData.throttleOut_min = MIN_THROTTLE; //used
+    configData.dutyCycle_max = MAX_DUTY_COUNTS; //used
+    configData.dutyCycle_min = MIN_DUTY_COUNTS; //used
+    configData.polePairs = POLE_PAIRS; //used
+    configData.pwmOutFreq = PWMFREQ; //This is currently set when we creat the PWM object, need to set after we load the config
+    configData.controlMode = DEFAULT_CONTROL_MODE; //Not used yet
     
-	configData.currentControl_kP = DEFAULT_KP;
-    configData.currentControl_kI = DEFAULT_KP;
-    configData.currentControl_kD = DEFAULT_KP;
+	configData.currentControl_kP = DEFAULT_KP; //Not used yet
+    configData.currentControl_kI = DEFAULT_KI; //Not used yet
+    configData.currentControl_kD = DEFAULT_KD; //Not used yet
     
-	configData.maxCurrent_HW = DRV_OC_LIMIT;
-	configData.maxCurrent_motor = MOTOR_OC_LIMIT;
-	configData.maxCurrent_batt = BATT_OC_LIMIT;
+	configData.maxCurrent_HW = DRV_OC_LIMIT; //used, in setup only
+	configData.maxCurrent_motor = MOTOR_OC_LIMIT; //used
+	configData.maxCurrent_batt = BATT_OC_LIMIT; //Not used yet
 	configData.maxCurrent_regen = REGEN_OC_LIMIT;
 	configData.maxBusVoltage = BUS_OV_LIMIT;
 	configData.minBusVoltage = BUS_UV_LIMIT;
@@ -476,13 +477,13 @@ int calcDutyCycle(){
 //      motorRPM = getRPM();
 //      //This is not fully implemented yet! In fact, I don't know if I will bother with this
 //      //Throttle needs to be mapped to actual rpm range!!
-//      speedSetpoint = map(throttle,0,MAX_THROTTLE_OUTPUT,0,MAX_MOTOR_RPM); 
+//      speedSetpoint = map(throttle,0,configData.throttleOut_max,0,MAX_MOTOR_RPM); 
 //      speedPID.Compute();      
 //      duty = speedDuty;
       break;
     case CONTROL_MODE_CURRENT:
       //Map throttle to current range.Probably need to do this mapping better!!
-      motorCurrentSetpoint = map(throttle,0,MAX_THROTTLE_OUTPUT,0,MOTOR_OC_LIMIT); //*11-29 NEEDS TO REFLECT CHANGE TO mA
+      motorCurrentSetpoint = map(throttle,0,configData.throttleOut_max,0,configData.maxCurrent_motor); //*11-29 NEEDS TO REFLECT CHANGE TO mA
       //motorCurrentSetpoint = throttle; //lets try this real quick
       currentPID.Compute();
       duty = motorCurrentDuty;
@@ -490,7 +491,7 @@ int calcDutyCycle(){
     case CONTROL_MODE_DUTY:
     
       //Throttle is going to need to be mapped to actual range!!
-      duty = map(throttle,0,MAX_THROTTLE_OUTPUT,0,4000); //need Max throttle to equal 4096 (4000 now) here    
+      duty = map(throttle,0,configData.throttleOut_max,0,4000); //need Max throttle to equal 4096 (4000 now) here    
       break;
   }
   
@@ -514,7 +515,7 @@ void outputStats(){
 //  Serial.print('\t');
 //  Serial.print(motorCurrent_mA);
 //  Serial.print('\t');
-//  Serial.print(MAX_DUTY_COUNTS);
+//  Serial.print(configData.dutyCycle_max);
 //  Serial.print('\t');
   Serial.print(dutyCycleFloat,2);
   Serial.print('\t');
@@ -606,7 +607,7 @@ double getERPM(){
 /////////////////////////////////////////////////
 // Calculate RPM
 double getRPM(){
-  return getERPM() / POLE_PAIRS;
+  return getERPM() / configData.polePairs;
 }
 
 ///////////////////////////////////////////////////////
@@ -940,7 +941,7 @@ void adc0_isr(){
       // (like from uncontrolled regen)
 
       int vLimit_raw = 2400; //1866; //Just defined here for now. 2400 should = 36V
-      if(vBattery_raw >= vLimit_raw){ //SW_OV_LIMIT){
+      if(vBattery_raw >= vLimit_raw){ //configData.maxBusVoltage){
         //this needs to do something more sophisticated
         faultCode = FAULT_CODE_OVER_VOLTAGE; //OV
 //        controllerState = MC_STATE_FAULT;
