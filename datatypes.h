@@ -5,6 +5,7 @@
 // Originally idea came from https://github.com/vedderb/bldc/blob/master/datatypes.h
 // but hese have been changed quite a bit now
 
+
 typedef enum {
    FB_MODE_HALL = 0,
    FB_MODE_ENC,
@@ -45,19 +46,6 @@ typedef enum {
     FAULT_CODE_HALL_SENSOR      // 8
 } mc_fault_code;
 
-//Yet another idea on how to handle fault codes
-//not sure if this is a good way to go or not
-typedef struct {
-  uint8_t drv_fault     :1 ;
-  uint8_t drv_pwrGood   :1 ;
-  uint8_t drv_oc        :1 ;
-  uint8_t swOverCurrent :1 ;
-  uint8_t swOverVoltage :1 ;
-  uint8_t hallSensor    :1 ;
-  uint8_t fetOverTemp   :1 ;
-  uint8_t motorOverTemp :1 ;
-} mc_faultStatus;
-
 //Config data to be stored in EEPROM 
 typedef struct {
   //misc
@@ -73,26 +61,26 @@ typedef struct {
   float currentControl_kI;
   float currentControl_kD;
   //Limits
-  unsigned int maxCurrent_HW;    //Amps
-  unsigned int maxCurrent_motor; //Amps
-  unsigned int maxCurrent_batt;  //Amps
-  unsigned int maxCurrent_regen; //Amps
-  unsigned int maxBusVoltage;    //Volts  
-  unsigned int minBusVoltage;    //Volts 
+  unsigned int maxCurrent_HW;    //0-4096
+  unsigned int maxCurrent_motor; //0-4096
+  unsigned int maxCurrent_batt;  //0-4096
+  unsigned int maxCurrent_regen; //0-4096
+  unsigned int maxBusVoltage;    //0-4096  
+  unsigned int minBusVoltage;    //0-4096 
   unsigned int maxFetTemp;     	 //degC
   //Version info
   float configVersion;  //We can check that this matches to see if data has been written before  
 } mc_configData;
 
-/*//Old stand alone limit Struct
+//stand alone limit Struct trying C++ style Struct
 //Limit config data to be stored in EEPROM 
-typedef struct {
-  unsigned int maxCurrent_HW;    //Amps
-  unsigned int maxCurrent_motor; //Amps
-  unsigned int maxCurrent_batt;  //Amps
-  unsigned int maxCurrent_regen; //Amps
-  unsigned int maxBusVoltage;    //Volts  
-  unsigned int minBusVoltage;    //Volts 
-  unsigned int maxTemp_FETs;     //degC
+ typedef struct {
+  float maxCurrent_HW;    //Amps
+  float maxCurrent_motor; //Amps
+  float maxCurrent_batt;  //Amps
+  float maxCurrent_regen; //Amps
+  float maxBusVoltage;    //Volts  
+  float minBusVoltage;    //Volts 
+  float maxTemp_FETs;     //degC
 } mc_limits;
-*/
+

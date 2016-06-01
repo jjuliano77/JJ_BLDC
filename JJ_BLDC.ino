@@ -52,15 +52,17 @@
                       //A14 is the 12bit DAC pin. Probably a waste of a 12 bit DAC
                       
 // Defines for other whacky fault code idea
-//#define aFAULT_CODE_DRV8302           0x01
-//#define aFAULT_CODE_DRV8302_OC        0x02
-//#define aFAULT_CODE_DRV8302_PWRGOOD   0x03    
-//#define aFAULT_CODE_SW_OVER_CURRENT   0x04
-//#define aFAULT_CODE_SW_OVER_VOLTAGE   0x05
-//#define aFAULT_CODE_SW_UNDER_VOLTAGE  0x06
-//#define aFAULT_CODE_OVER_TEMP_FET     0x07
-//#define aFAULT_CODE_OVER_TEMP_MOTOR   0x08
-//#define aFAULT_CODE_HALL_SENSOR       0x09
+#define FAULT_CODE_NONE						0x00
+#define FAULT_CODE_DRV8302          		0x01
+#define FAULT_CODE_DRV8302_OVERCURRENT		0x02
+#define FAULT_CODE_DRV8302_PWRGOOD   		0x03    
+#define FAULT_CODE_MOTOR_OVERCURRENT  		0x04
+#define FAULT_CODE_BATT_OVERCURRENT  		0x06
+#define FAULT_CODE_OVER_VOLTAGE   			0x07
+#define FAULT_CODE_UNDER_VOLTAGE  			0x08
+#define FAULT_CODE_OVER_TEMP_FET     		0x09
+#define FAULT_CODE_OVER_TEMP_MOTOR   		0x0A
+#define FAULT_CODE_HALL_SENSOR       		0x0B
 
 #define DIR_FORWARD 1
 #define DIR_REVERSE 0
@@ -78,15 +80,14 @@
 #define ticksToUs(ticks) ((ticks) * PDB_PRESCALE * 1000 / (F_BUS / 1000))
 
 // NTC Termistors
-//#define NTC_RES(adc_val)	(10000.0 / ((4096.0 / (float)adc_val) - 1.0))
 #define NTC_RES(adc_val)	((4095.0 * 10000.0) / adc_val - 10000.0)
 #define NTC_CONVERT_TEMP(adc_val)	(1.0 / ((logf(NTC_RES(adc_val) / 10000.0) / 3434.0) + (1.0 / 298.15)) - 273.15)
 
 
 
 const float V_SF = 0.015;  //Counts to bus Volts (voltage divider)
-const int  mV_SF = 15;     //Counts to bus mV (voltage divider)
-const int SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10
+const int   mV_SF = 15;     //Counts to bus mV (voltage divider)
+const int   SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10
                                          //So - I = (Vshunt * 10) * 100
 
 //******** Hall state table from DEV BLDC code for testing **************
@@ -142,7 +143,7 @@ boolean regenEnabled = false;
 boolean serialStreamFlag = false;
 
 //Fault code "fake register" (look into best way to do this)
-uint16_t faultCodes = 0;   // | drv_pwrGood | drv_fault | drv_octw 
+uint16_t faultStatus = 0;   // | drv_pwrGood | drv_fault | drv_octw 
                            // |      0      |     0     |     0   
 
 double motorCurrent = 0;
@@ -159,18 +160,17 @@ double lastDutyCycle;
 
 mc_state controllerState;
 mc_control_mode controlMode;
-mc_fault_code faultCode;
+//mc_fault_code faultCode;
 mc_fb_mode feedbackMode;
-mc_faultStatus faultStatus; //new struct to hold faults
+//mc_faultStatus faultStatus; //new struct to hold faults
 mc_configData configData;
+//mc_limits limitValues;
 
 RunningAverage fetTemp_RA(RUNNING_AVG_BLOCK_SIZE);
 RunningAverage motorCurrent_RA(RUNNING_AVG_BLOCK_SIZE);
 //RunningAverage motorCurrent_mA_RA(RUNNING_AVG_BLOCK_SIZE);
 
 ADC *adc = new ADC();    //adc object
-//RingBuffer *iSense1_buffer = new RingBuffer;
-//RingBuffer *iSense2_buffer = new RingBuffer;
 ADC::Sync_result syncReadResult; //Structure to store synchronized read from both ADCs
 
 //Create SerialCommand object
@@ -185,7 +185,7 @@ IntervalTimer comTimer;         //commutation timer
 IntervalTimer controlLoopTimer; //main control loop timer
 
 // PID controllers,is this overkill??????
-PID currentPID(&motorCurrent_Avg, &motorCurrentDuty, &motorCurrentSetpoint, 50.0,0.0,0.0, DIRECT);
+PID currentPID(&motorCurrent_Avg, &motorCurrentDuty, &motorCurrentSetpoint, DEFAULT_CURRENT_KP,DEFAULT_CURRENT_KI,DEFAULT_CURRENT_KD, DIRECT);
 //PID speedPID(&motorRPM, &speedDuty, &speedSetpoint, 1.0,5.0,0.0, DIRECT);
 
 static void FTM0_INT_ENABLE(void)  { FTM0_SC |= FTM_SC_TOIE; FTM0_C0SC |= FTM_CSC_CHIE; NVIC_ENABLE_IRQ(IRQ_FTM0);}
@@ -259,7 +259,7 @@ void setup() {
   do_dc_cal();                                       //Shunt offset calibration 
   throttle_offset = adc->analogRead(THROTTLE,ADC_0); //Throttle offset calibration
   
-  faultCode = FAULT_CODE_NONE;    //The whole fault code thing needs to be done better
+  //faultCode = FAULT_CODE_NONE;    //The whole fault code thing needs to be done better
   
   //**********Initial control mode**********
   controlMode = CONTROL_MODE_DUTY;
@@ -352,7 +352,7 @@ void controlLoop(){
       tmpDuty = calcDutyCycle();
   
       //Check DRV8302 Hardware OC Protection
-      if(faultCode == FAULT_CODE_DRV8302_OC){
+      if(faultStatus & FAULT_CODE_DRV8302_OVERCURRENT){
         //reduce duty cycly. This is pretty crappy, need somthing clever here
         //Also, maybe a DRV OC should be an interupt?
         tmpDuty = tmpDuty / 2; //HW OC detected, lets try cutting the duty cycle in half (6-18-15)
@@ -362,7 +362,7 @@ void controlLoop(){
       //TO DO: Need to implement a WARNING_TEMP that simply reduces the SW current limit (once that works)    
       if(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()) > configData.maxFetTemp){   //Try this with RA filtered readings
         //Oh crap, getting hot!
-        faultCode = FAULT_CODE_OVER_TEMP_FET;
+        faultStatus |= FAULT_CODE_OVER_TEMP_FET;
         //Need to add test for this fault in other areas
         //I just realized that I think I need an ohCrapShutdown() function     
         //For now....
@@ -395,7 +395,7 @@ void controlLoop(){
       
       //If fault has cleared, transition out. This should probably be smart enough
       //to transition back to MC_STATE_DRIVE when appropriate
-      if(faultCode == FAULT_CODE_NONE){
+      if(faultStatus == FAULT_CODE_NONE){
       //if((faultStatus.drv_pwrGood | faultStatus.drv_fault | faultStatus.drv_oc |) == false){
         controllerState = MC_STATE_STOPPED; //THIS IS MAKING A BIG ASSUMPTION!! Need to fix
       }
@@ -420,11 +420,11 @@ void loadConfig(){
     configData.pwmOutFreq = PWMFREQ; //This is currently set when we creat the PWM object, need to set after we load the config
     configData.controlMode = DEFAULT_CONTROL_MODE; //Not used yet
     
-	configData.currentControl_kP = DEFAULT_KP; //Not used yet
-    configData.currentControl_kI = DEFAULT_KI; //Not used yet
-    configData.currentControl_kD = DEFAULT_KD; //Not used yet
+	configData.currentControl_kP = DEFAULT_CURRENT_KP; //Not used yet
+    configData.currentControl_kI = DEFAULT_CURRENT_KI; //Not used yet
+    configData.currentControl_kD = DEFAULT_CURRENT_KD; //Not used yet
     
-	configData.maxCurrent_HW = DRV_OC_LIMIT; //used, in setup only
+	configData.maxCurrent_HW = DRV_OC_LIMIT; //!!NEED TO SCALE TO COUNTS HERE used, in setup only
 	configData.maxCurrent_motor = MOTOR_OC_LIMIT; //used
 	configData.maxCurrent_batt = BATT_OC_LIMIT; //Not used yet
 	configData.maxCurrent_regen = REGEN_OC_LIMIT;
@@ -458,12 +458,12 @@ void checkDrv8302Faults(){
   
   if(!drv_pwrGood || drv_fault){
     controllerState = MC_STATE_FAULT;
-    faultCode = FAULT_CODE_DRV8302;  //for now
+    faultStatus |= FAULT_CODE_DRV8302;  //for now
   }  
   if(drv_octw){
     //May want to do something more clever with this fault so kept it seperate
     controllerState = MC_STATE_FAULT;
-    faultCode = FAULT_CODE_DRV8302_OC; //for now
+    faultStatus |= FAULT_CODE_DRV8302_OC; //for now
   }
 }
 
@@ -529,8 +529,6 @@ void outputStats(){
 //  Serial.print('\t');
   Serial.print(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()));
   Serial.print('\t');
-//  Serial.print(drv_pwrGood);           //faultCode has these covvered now
-//  Serial.print(',');
 //  Serial.print(motorCurrentSetpoint);
 //  Serial.print('\t');
 //  Serial.print(motorCurrentDuty);
@@ -546,7 +544,7 @@ void outputStats(){
   Serial.print('\t');
 //  Serial.print(getMPH(),2);
 //  Serial.print('\t');
-  Serial.print(faultCode); //Lets move away from old "limitTripped" to the mc_fault_code enum
+  Serial.print(faultStatus,BIN); //print out faultStatus bits
   Serial.print('\t');
 //  Serial.print(hallState,BIN);
 //  Serial.print('\t');
@@ -554,8 +552,6 @@ void outputStats(){
   Serial.print('\t');
 //  Serial.print(bemfSampleTime);
 //  Serial.print('\t');
-  Serial.print(faultCode);
-  Serial.print('\t');
   Serial.println(commStep);
 }
 ////////////////////////////////////////////////////////////
@@ -899,10 +895,9 @@ void adc0_isr(){
       //Ok, while thats happening maybe we can check the absolute current limits?
       //Is checking every single pulse really necessary? I don't know but i'll do it anyway
       
-      int iLimit_raw = 2048; //Just defined this here for right now, move it later
-      if((iSense1_raw > iLimit_raw) || (iSense2_raw > iLimit_raw)){
+      if((iSense1_raw > configData.maxCurrent_motor) || (iSense2_raw > configData.maxCurrent_motor)){
         //Oh crap! We have exceded our limit
-        faultCode = FAULT_CODE_ABS_SOFT_OC; //OC
+        faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
         controllerState = MC_STATE_FAULT;    
         faultShutdown();       
       }
@@ -939,11 +934,9 @@ void adc0_isr(){
         
       //While thats converting, lets check if bus voltage has gotten to high
       // (like from uncontrolled regen)
-
-      int vLimit_raw = 2400; //1866; //Just defined here for now. 2400 should = 36V
-      if(vBattery_raw >= vLimit_raw){ //configData.maxBusVoltage){
+      if(vBattery_raw >= configData.maxBusVoltage){
         //this needs to do something more sophisticated
-        faultCode = FAULT_CODE_OVER_VOLTAGE; //OV
+        faultStatus |= FAULT_CODE_OVER_VOLTAGE; //OV
 //        controllerState = MC_STATE_FAULT;
 //        faultShutdown();
       }
@@ -987,7 +980,7 @@ void commutate(){
       
       if(commStep < 6){       // we have a valid hall state
         
-        faultCode = FAULT_CODE_NONE; //Still need to improve all the fault code stuff  
+        faultStatus &= ~FAULT_CODE_HALL_SENSOR; //Still need to improve all the fault code stuff  
         doTachometer();
         
         if(controllerState == MC_STATE_DRIVE){
@@ -998,7 +991,7 @@ void commutate(){
               
       }else if(commStep >= 6){
         //Something is wrong!
-        faultCode = FAULT_CODE_HALL_SENSOR;
+        faultStatus |= FAULT_CODE_HALL_SENSOR;
         faultShutdown();               
         //need to do more here
       }
