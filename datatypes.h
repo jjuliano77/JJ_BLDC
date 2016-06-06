@@ -1,6 +1,6 @@
 //Current dumping ground for potentially useful datatypes. Needs to be
 //cleaned up if used at all.
-        
+
 // Data types
 // Originally idea came from https://github.com/vedderb/bldc/blob/master/datatypes.h
 // but hese have been changed quite a bit now
@@ -21,7 +21,7 @@ typedef enum {
    MC_STATE_DRIVE,
    MC_STATE_COAST,
    MC_STATE_BRAKE,
-   MC_STATE_FULL_BRAKE,   
+   MC_STATE_FULL_BRAKE,
    MC_STATE_FAULT
 } mc_state;
 
@@ -39,48 +39,47 @@ typedef enum {
 	FAULT_CODE_OVER_VOLTAGE,    // 1
 	FAULT_CODE_UNDER_VOLTAGE,   // 2
 	FAULT_CODE_DRV8302,         // 3
-    FAULT_CODE_DRV8302_OC,      // 4
+  FAULT_CODE_DRV8302_OC,      // 4
 	FAULT_CODE_ABS_SOFT_OC,     // 5
 	FAULT_CODE_OVER_TEMP_FET,   // 6
 	FAULT_CODE_OVER_TEMP_MOTOR,  // 7
-    FAULT_CODE_HALL_SENSOR      // 8
+  FAULT_CODE_HALL_SENSOR      // 8
 } mc_fault_code;
 
-//Config data to be stored in EEPROM 
+//Config data to be stored in EEPROM
 typedef struct {
   //misc
-  unsigned int throttleOut_max;    //0-4096
-  unsigned int throttleOut_min;    //0-4096
-  unsigned int dutyCycle_max;      //0-4096
-  unsigned int dutyCycle_min;      //0-4096
-  unsigned int polePairs;
-  unsigned int pwmOutFreq;         //Hz
+  uint16_t throttleOut_max;    //0-4096
+  uint16_t throttleOut_min;    //0-4096
+  uint16_t dutyCycle_max;      //0-4096
+  uint16_t dutyCycle_min;      //0-4096
+  uint16_t polePairs;
+  uint16_t pwmOutFreq;         //Hz
   uint8_t controlMode;
   //PID params
   float currentControl_kP;
   float currentControl_kI;
   float currentControl_kD;
   //Limits
-  unsigned int maxCurrent_HW;    //0-4096
-  unsigned int maxCurrent_motor; //0-4096
-  unsigned int maxCurrent_batt;  //0-4096
-  unsigned int maxCurrent_regen; //0-4096
-  unsigned int maxBusVoltage;    //0-4096  
-  unsigned int minBusVoltage;    //0-4096 
-  unsigned int maxFetTemp;     	 //degC
+  uint16_t maxCurrent_HW;    //0-4096
+  uint16_t maxCurrent_motor; //0-4096
+  uint16_t maxCurrent_batt;  //0-4096
+  uint16_t maxCurrent_regen; //0-4096
+  uint16_t maxBusVoltage;    //0-4096
+  uint16_t minBusVoltage;    //0-4096
+  uint16_t maxFetTemp;     	 //degC
   //Version info
-  float configVersion;  //We can check that this matches to see if data has been written before  
+  float configVersion;  //We can check that this matches to see if data has been written before
 } mc_configData;
 
 //stand alone limit Struct trying C++ style Struct
-//Limit config data to be stored in EEPROM 
+//Limit config data to be stored in EEPROM
  typedef struct {
   float maxCurrent_HW;    //Amps
   float maxCurrent_motor; //Amps
   float maxCurrent_batt;  //Amps
   float maxCurrent_regen; //Amps
-  float maxBusVoltage;    //Volts  
-  float minBusVoltage;    //Volts 
+  float maxBusVoltage;    //Volts
+  float minBusVoltage;    //Volts
   float maxTemp_FETs;     //degC
 } mc_limits;
-

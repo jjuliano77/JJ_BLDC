@@ -52,17 +52,17 @@
                       //A14 is the 12bit DAC pin. Probably a waste of a 12 bit DAC
 
 // Defines for other whacky fault code idea
-#define FAULT_CODE_NONE						      0x00
-#define FAULT_CODE_DRV8302          		0x01
-#define FAULT_CODE_DRV8302_OVERCURRENT  0x02
-#define FAULT_CODE_DRV8302_PWRGOOD   		0x03
-#define FAULT_CODE_MOTOR_OVERCURRENT  	0x04
-#define FAULT_CODE_BATT_OVERCURRENT  		0x06
-#define FAULT_CODE_OVER_VOLTAGE   			0x07
-#define FAULT_CODE_UNDER_VOLTAGE  			0x08
-#define FAULT_CODE_OVER_TEMP_FET     		0x09
-#define FAULT_CODE_OVER_TEMP_MOTOR   		0x0A
-#define FAULT_CODE_HALL_SENSOR       		0x0B
+#define FAULT_CODE_NONE                   0x00
+#define FAULT_CODE_DRV8302                0x01
+#define FAULT_CODE_DRV8302_OVERCURRENT    0x02
+#define FAULT_CODE_DRV8302_PWRGOOD        0x03
+#define FAULT_CODE_MOTOR_OVERCURRENT      0x04
+#define FAULT_CODE_BATT_OVERCURRENT       0x06
+#define FAULT_CODE_OVER_VOLTAGE           0x07
+#define FAULT_CODE_UNDER_VOLTAGE          0x08
+#define FAULT_CODE_OVER_TEMP_FET          0x09
+#define FAULT_CODE_OVER_TEMP_MOTOR        0x0A
+#define FAULT_CODE_HALL_SENSOR            0x0B
 
 #define DIR_FORWARD 1
 #define DIR_REVERSE 0
@@ -423,19 +423,19 @@ void loadConfig(){
     configData.pwmOutFreq = PWMFREQ; //This is currently set when we creat the PWM object, need to set after we load the config
     configData.controlMode = DEFAULT_CONTROL_MODE; //Not used yet
 
-	  configData.currentControl_kP = DEFAULT_CURRENT_KP; //Not used yet
+    configData.currentControl_kP = DEFAULT_CURRENT_KP; //Not used yet
     configData.currentControl_kI = DEFAULT_CURRENT_KI; //Not used yet
     configData.currentControl_kD = DEFAULT_CURRENT_KD; //Not used yet
 
-	  configData.maxCurrent_HW = voltsToCounts(DRV_OC_LIMIT / SHUNT_CURRENT_FACTOR);
-	  configData.maxCurrent_motor = voltsToCounts(MOTOR_OC_LIMIT / SHUNT_CURRENT_FACTOR); //used
-	  configData.maxCurrent_batt = voltsToCounts(BATT_OC_LIMIT / SHUNT_CURRENT_FACTOR); //Not used yet
-	  configData.maxCurrent_regen = voltsToCounts(REGEN_OC_LIMIT / SHUNT_CURRENT_FACTOR);
-	  configData.maxBusVoltage = voltsToCounts(BUS_OV_LIMIT / BUS_VOLTAGE_FACTOR);
-	  configData.minBusVoltage = voltsToCounts(BUS_UV_LIMIT / BUS_VOLTAGE_FACTOR);
-	  configData.maxFetTemp = MAX_FET_TEMP; //This can stay as deg C for now
-	  //Write current config version
-	  configData.configVersion = CONFIG_VERSION;
+    configData.maxCurrent_HW = voltsToCounts(DRV_OC_LIMIT / SHUNT_CURRENT_FACTOR);
+    configData.maxCurrent_motor = voltsToCounts(MOTOR_OC_LIMIT / SHUNT_CURRENT_FACTOR); //used
+    configData.maxCurrent_batt = voltsToCounts(BATT_OC_LIMIT / SHUNT_CURRENT_FACTOR); //Not used yet
+    configData.maxCurrent_regen = voltsToCounts(REGEN_OC_LIMIT / SHUNT_CURRENT_FACTOR);
+    configData.maxBusVoltage = voltsToCounts(BUS_OV_LIMIT / BUS_VOLTAGE_FACTOR);
+    configData.minBusVoltage = voltsToCounts(BUS_UV_LIMIT / BUS_VOLTAGE_FACTOR);
+    configData.maxFetTemp = MAX_FET_TEMP; //This can stay as deg C for now
+    //Write current config version
+    configData.configVersion = CONFIG_VERSION;
   }else{
     Serial.println("Config data found!");
   }
@@ -876,6 +876,7 @@ void adc0_isr(){
 
       //I want to try adding a RA filtered current reading
       motorCurrent_RA.addValue(getMotorCurrent());  //Need to work on this!, 6-2-16
+
 
       digitalWriteFast(30, LOW); //to see on scope
       //ADC0_RA; //reset the interupt
