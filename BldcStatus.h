@@ -8,10 +8,9 @@
 #ifndef BldcStatus_h
 #define BldcStatus_h
 
-#include "arduino"
+#include <arduino.h>
 
-
-class BLDCStatus
+class BldcStatus
 {
    public:
       BldcStatus(void);
@@ -31,32 +30,27 @@ class BLDCStatus
       uint16_t getVirtGround_Raw();
       float getBusVoltage_Volts();
       void updateBusVoltage(uint16_t);
-      void updatePhaseVoltage(uint16_t); //This will need to account for what phase we are updating (or we need 3 functions)
+      void updateBemfVoltage(uint16_t);
+      void getBemfVoltage_Raw();
 
       uint16_t getFetTemp_Raw();
       void updateFetTemp(uint16_t);
       uint16_t calcNtcRes(uint16_t);
-      float getFetTemp_DegC(uint16_t);	(1.0 / ((logf(getNtcRes(adc_val) / 10000.0) / 3434.0) + (1.0 / 298.15)) - 273.15)
+      float getFetTemp_DegC(uint16_t);
 
-
-      const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
-      const int   SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10
-                                               //So - I = (Vshunt * 10) * 100
       //Public members
       volatile uint16_t  throttle;
       volatile uint16_t lastThrottle;
       uint16_t throttle_offset  = 0;
 
       volatile uint16_t iSense1_raw;
-      uint16_t iSense2_raw;
+      volatile uint16_t iSense2_raw;
       uint16_t iSense1_offset;
       uint16_t iSense2_offset;
 
-      uint16_t vBus_raw;
-      uint16_t vSenseA_raw;
-      uint16_t vSenseB_raw;
-      uint16_t vSenseC_raw;
-      uint16_t vBemf_raw;
+      volatile uint16_t vBus_raw;
+
+      volatile uint16_t vBemf_raw;
 
       volatile uint16_t fetTemp_raw;
 
@@ -66,4 +60,9 @@ class BLDCStatus
      uint16_t ampHrsUsed;
      elapsedMillis ampHrTimer;
 
-}
+     const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
+     const int   SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10
+                                              //So - I = (Vshunt * 10) * 100
+
+};
+#endif

@@ -5,11 +5,14 @@
 #include "BldcPWM.h"       //My PWM library
 #include "PID_v1.h"           //Use PID library for Current and speed control loops
 #include "RunningAverage.h"
+#include "Tachometer.h"
+#include "BldcStatus.h"
 #include <SerialCommand.h>
 #include <EEPROM.h>
 
-#define FW_VERSION 0.65
-#define CONFIG_VERSION 1.01
+#define JJBLDC_FW_VERSION 0.65
+#define JJBLDC_CONFIG_VERSION 1.01
+#define JJBLDC_HW_VERSION 0.2
 
 //**********************
 //Pin Definitions - got to start somewhere
@@ -98,7 +101,7 @@ uint8_t hallOrder_0[] = {255, 2, 0, 1, 4, 3, 5, 255};
 uint8_t hallOrder_1[] = {255, 5, 3, 4, 1, 0, 2, 255}; //This seems to work
 //uint8_t bemfCommOrder[] = {3,4,5,0,1,2}; //Never got this working right
 
-volatile uint8_t commStep;              //holds the current commutation state. May not be needed
+volatile unsigned int commStep;              //holds the current commutation state. May not be needed
 volatile uint8_t lastcommStep;
 volatile uint8_t bemfPin;                //holds the AIN pin for the current BEMF sensing phase.
 volatile uint8_t hallState = 0;          //Global because I want this to be accessable while testing
@@ -107,9 +110,9 @@ volatile uint32_t bemfSampleTime = 0;    //Global because I want this to be acce
 volatile boolean zeroCrossFound = false; //Global because I want this to be accessable while testing
 unsigned long commDelay;
 
-volatile uint32_t eRotPeriod;   //Contains the most recent electrical rotation period in uS
+//volatile uint32_t eRotPeriod;   //Contains the most recent electrical rotation period in uS
 volatile uint32_t commPeriod;   //Contains the most recent commutation step period in uS
-elapsedMicros tachTimer;
+//elapsedMicros tachTimer;
 //elapsedMicros controlLoopTimer;
 elapsedMicros zcTimer;
 elapsedMillis outputTimer;
@@ -187,6 +190,9 @@ IntervalTimer controlLoopTimer; //main control loop timer
 // PID controllers,is this overkill??????
 PID currentPID(&motorCurrent_Avg, &motorCurrentDuty, &motorCurrentSetpoint, DEFAULT_CURRENT_KP,DEFAULT_CURRENT_KI,DEFAULT_CURRENT_KD, DIRECT);
 //PID speedPID(&motorRPM, &speedDuty, &speedSetpoint, 1.0,5.0,0.0, DIRECT);
+
+//Create Tachometer object and give it a pointer to the commStep variable
+Tachometer tachometer(&commStep);
 
 static void FTM0_INT_ENABLE(void)  { FTM0_SC |= FTM_SC_TOIE; FTM0_C0SC |= FTM_CSC_CHIE; NVIC_ENABLE_IRQ(IRQ_FTM0);}
 static void FTM0_INT_DISABLE(void) { NVIC_ENABLE_IRQ(IRQ_FTM0); }
@@ -292,7 +298,7 @@ void setup() {
   adc->enableInterrupts(ADC_0);
 
   Serial.print("JJ_BLDC V");
-  Serial.print(FW_VERSION,2);
+  Serial.print(JJBLDC_FW_VERSION,2);
   Serial.println(" ready");
 }
 
@@ -382,7 +388,7 @@ void controlLoop(){
 
       lastDutyCycle = tmpDuty; //keep track of what our last target was
 
-      if((getRPM() <= STOPPED_RPM_THRESH) && (controllerState != MC_STATE_FAULT)){
+      if((tachometer.getRPM() <= STOPPED_RPM_THRESH) && (controllerState != MC_STATE_FAULT)){
         controllerState = MC_STATE_STOPPED;
       }
       break;
@@ -411,7 +417,7 @@ void controlLoop(){
 // Load configuration data from EEPROM if available
 void loadConfig(){
   EEPROM.get(eeAddress, configData);
-  if(configData.configVersion != CONFIG_VERSION){
+  if(configData.configVersion != JJBLDC_CONFIG_VERSION){
     Serial.println("No config found! Using default values");
 
     //Set defaults
@@ -435,7 +441,7 @@ void loadConfig(){
     configData.minBusVoltage = voltsToCounts(BUS_UV_LIMIT / BUS_VOLTAGE_FACTOR);
     configData.maxFetTemp = MAX_FET_TEMP; //This can stay as deg C for now
     //Write current config version
-    configData.configVersion = CONFIG_VERSION;
+    configData.configVersion = JJBLDC_CONFIG_VERSION;
   }else{
     Serial.println("Config data found!");
   }
@@ -543,7 +549,7 @@ void outputStats(){
 //  //uint32_t rpmCopy = eRPM;
 //  Serial.print(tachTimer);
 //  Serial.print('\t');
-  Serial.print(getRPM(),0);
+  Serial.print(tachometer.getRPM(),0);
   Serial.print('\t');
 //  Serial.print(getMPH(),2);
 //  Serial.print('\t');
@@ -590,35 +596,6 @@ void do_dc_cal(void) {
 	iSense2_offset = curr2_sum / samples;
 	digitalWriteFast(DC_CAL, LOW);
 	drv_dcCalDone = true;
-}
-
-//////////////////////////////////////////////////
-// Get Electrical RPM Of The Motor
-double getERPM(){
-  eRotPeriod = commPeriod * 6;
-
-  if(eRotPeriod > 10) //some small threshold
-    return (((1 / (double) eRotPeriod) * 1000000) * 60);
-
-  return 0;
-}
-
-/////////////////////////////////////////////////
-// Calculate RPM
-double getRPM(){
-  return getERPM() / configData.polePairs;
-}
-
-///////////////////////////////////////////////////////
-// Calculate MPH Based On RPM, Gear Ratio, and Tire Dia
-double getMPH(){
-  //int RPM = getRPM();
-  const double TIRE_DIA_IN = 10;
-  const double TIRE_CIRCUMFERENCE_IN = TIRE_DIA_IN * 3.14;
-  const double GEAR_RATIO = 5; //X:1
-
-  return ((getRPM()/GEAR_RATIO) * TIRE_CIRCUMFERENCE_IN * 60) / 63360;
-
 }
 
 ////////////////////////////////////////////////////////
@@ -831,24 +808,24 @@ void pdb_isr(void){
 ///////////////////////////////////////////////
 // Tach routine based on comm state.
 void doTachometer(void){
-  const uint32_t STOP_TIMEOUT = 50000; //stop detection timeout (in uS)
-  //static uint8_t lastcommStep; //made global
-
-  if((controllerState != MC_STATE_START) && (controllerState != MC_STATE_ALIGNMENT) && (tachTimer > STOP_TIMEOUT)){
-   commPeriod = 999999; //just a some big number
-   tachTimer = 0;
-   //controllerState = MC_STATE_STOPPED;
-  }
-
-  //I want to try basing it on a single commutation step
-  if(commStep != lastcommStep){
-    commPeriod = tachTimer;
-    tachTimer = 0;
-    lastcommStep = commStep;
-  }else if(tachTimer > STOP_TIMEOUT){
-    commPeriod = 999999;
-    tachTimer = 0;
-  }
+  // const uint32_t STOP_TIMEOUT = 50000; //stop detection timeout (in uS)
+  // //static uint8_t lastcommStep; //made global
+	//
+  // if((controllerState != MC_STATE_START) && (controllerState != MC_STATE_ALIGNMENT) && (tachTimer > STOP_TIMEOUT)){
+  //  commPeriod = 999999; //just a some big number
+  //  tachTimer = 0;
+  //  //controllerState = MC_STATE_STOPPED;
+  // }
+	//
+  // //I want to try basing it on a single commutation step
+  // if(commStep != lastcommStep){
+  //   commPeriod = tachTimer;
+  //   tachTimer = 0;
+  //   lastcommStep = commStep;
+  // }else if(tachTimer > STOP_TIMEOUT){
+  //   commPeriod = 999999;
+  //   tachTimer = 0;
+  // }
 }
 
 ///////////////////////////////////////////////////////
@@ -981,8 +958,9 @@ void commutate(){
 
       if(commStep < 6){       // we have a valid hall state
 
-        faultStatus &= ~FAULT_CODE_HALL_SENSOR; //Still need to improve all the fault code stuff
-        doTachometer();
+        faultStatus &= ~FAULT_CODE_HALL_SENSOR;
+        //doTachometer();
+        tachometer.update();
 
         if(controllerState == MC_STATE_DRIVE){
           writeBridgeState(commStep);
@@ -1116,7 +1094,7 @@ void writeBridgeState(uint8_t pos){
 //Output the firmware version
 void cmdGetVersion(void){
   Serial.print("JJ_BLDC V");
-  Serial.println(FW_VERSION,2);
+  Serial.println(JJBLDC_FW_VERSION,2);
 }
 
 //////////////////////////////////////////////

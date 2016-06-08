@@ -3,19 +3,21 @@
 
   Jaimy Juliano
 */
+#include "bldcStatus.h"
 
-BldcStatus::BldcStatus(void)
+
+BldcStatus::BldcStatus()
 {
 
 }
 
-BldcStatus::~BldcStatus(void)
+BldcStatus::~BldcStatus()
 {
   //Really should never get here
 }
 
 //Store a new phase current reading
-void BldcStatus::updatePhaseCurrent(uint16_t adc_val)
+void BldcStatus::updatePhaseCurrents(uint16_t adc_val1, uint16_t adc_val2)
 {
 
 }
@@ -29,5 +31,5 @@ uint16_t BldcStatus::calcNtcRes(uint16_t adc_val)
 //Calculate temperature in Degrees C
 float BldcStatus::getFetTemp_DegC(uint16_t adc_val)
 {
-  return (1.0 / ((logf(getNtcRes(adc_val) / 10000.0) / 3434.0) + (1.0 / 298.15)) - 273.15);
+  return (1.0 / ((logf(calcNtcRes(adc_val) / 10000.0) / 3434.0) + (1.0 / 298.15)) - 273.15);
 }
