@@ -6,25 +6,26 @@
 
 #include "Tachometer.h"
 
-Tachometer::Tachometer(volatile unsigned int* commStep){
-  _commStep = commStep;
-}
+// Tachometer::Tachometer(volatile unsigned int* commStep){
+//   _commStep = commStep;
+// }
+Tachometer::Tachometer(){};
 
-void Tachometer::update(){
+void Tachometer::update(unsigned int commStep){
+  _commStep = commStep;
   //I want to try basing it on a single commutation step
-  if(_commStep != _lastcommStep){
+  if(_commStep != _lastCommStep){
     _commPeriod = _tachTimer;
     _tachTimer = 0;
-    _lastcommStep = _commStep;
-  }else if(tachTimer > STOP_TIMEOUT){
+    _lastCommStep = _commStep;
+  }else if(_tachTimer > STOP_TIMEOUT){
     _commPeriod = 999999;
     _tachTimer = 0;
   }
 }
 
-void Tachometer::setWheelDiameter(float wheelDiameter){
-  _wheelDiameter = wheelDiameter;
-  _wheelCircumference = wheelDiameter * 3.14159; //Just do this too while we are at it
+void Tachometer::setWheelCircumference(float wheelCircumference){  
+  _wheelCircumference = wheelCircumference; //Just do this too while we are at it
 }
 
 void Tachometer::setGearRatio(float gearRatio){
@@ -38,14 +39,13 @@ void Tachometer::setPolePairs(unsigned int polePairs){
 // Get Electrical RPM Of The Motor
 float Tachometer::getERPM(){
 
-  noInterrupts(); //Just in case
   _eRotPeriod = _commPeriod * _polePairs;
-  interupts();
 
-  if(eRotPeriod > 10) //some small threshold
+  if(_eRotPeriod > 10){ //some small threshold
     return (((1 / (double) _eRotPeriod) * 1000000) * 60);
-
-  return 0;
+  }else{
+    return 0;
+  }
 }
 
 // Calculate RPM

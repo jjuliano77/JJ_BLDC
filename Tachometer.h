@@ -11,29 +11,33 @@
 class Tachometer{
 public:
 
-  Tachometer(volatile unsigned int*); //Take a pointer to the commutation period variable
-  ~Tachometer();
+  // Tachometer(volatile unsigned int*); //Take a pointer to the commutation period variable
+                                      //This isn't working. GCC wont let me pass a volatile pointer
+  Tachometer(); //We'll just do it by passing the commStep to the update() method for now
 
   float getRPM();
   float getMPH();
+  float getERPM(); //Public for dubugging
 
-  void setWheelDiameter(float);
+  void setWheelCircumference(float);
   void setGearRatio(float);
   void setPolePairs(unsigned int);
-  void update();
+  void update(unsigned int);
+
+  elapsedMicros _tachTimer; //Public for dubugging
 
 private:
-  float getERPM();
+  //float getERPM();
 
-  float _wheelDiameter;
-  float _wheelCircumference; //I'll just set this too in the setWheelDiameter() member
-  float _gearRatio;
-  unsigned int _polePairs;
-  unsigned int* _commStep;
+  //float _wheelDiameter;
+  float _wheelCircumference = 31.4159; //Default fo 10" diameter wheel
+  float _gearRatio = 4;
+  unsigned int _polePairs = 6;
+  unsigned int _commStep;
   unsigned int _lastCommStep;
   unsigned long _commPeriod;
   unsigned long _eRotPeriod;
-  elapsedMicros _tachTimer;
+  //elapsedMicros _tachTimer;
 
 
   const unsigned int INCHES_IN_MILE = 63360;

@@ -34,17 +34,17 @@ typedef enum {
 	CONTROL_MODE_NONE
 } mc_control_mode;
 
-typedef enum {
-	FAULT_CODE_NONE = 0,        // 0
-	FAULT_CODE_OVER_VOLTAGE,    // 1
-	FAULT_CODE_UNDER_VOLTAGE,   // 2
-	FAULT_CODE_DRV8302,         // 3
-  FAULT_CODE_DRV8302_OC,      // 4
-	FAULT_CODE_ABS_SOFT_OC,     // 5
-	FAULT_CODE_OVER_TEMP_FET,   // 6
-	FAULT_CODE_OVER_TEMP_MOTOR,  // 7
-  FAULT_CODE_HALL_SENSOR      // 8
-} mc_fault_code;
+// typedef enum {
+// 	FAULT_CODE_NONE = 0,        // 0
+// 	FAULT_CODE_OVER_VOLTAGE,    // 1
+// 	FAULT_CODE_UNDER_VOLTAGE,   // 2
+// 	FAULT_CODE_DRV8302,         // 3
+//   FAULT_CODE_DRV8302_OC,      // 4
+// 	FAULT_CODE_ABS_SOFT_OC,     // 5
+// 	FAULT_CODE_OVER_TEMP_FET,   // 6
+// 	FAULT_CODE_OVER_TEMP_MOTOR,  // 7
+//   FAULT_CODE_HALL_SENSOR      // 8
+// } mc_fault_code;
 
 //Config data to be stored in EEPROM
 typedef struct {
@@ -72,14 +72,14 @@ typedef struct {
   float configVersion;  //We can check that this matches to see if data has been written before
 } mc_configData;
 
-//stand alone limit Struct trying C++ style Struct
+//stand alone limit Struct
 //Limit config data to be stored in EEPROM
  typedef struct {
-  float maxCurrent_HW;    //Amps
-  float maxCurrent_motor; //Amps
-  float maxCurrent_batt;  //Amps
-  float maxCurrent_regen; //Amps
-  float maxBusVoltage;    //Volts
-  float minBusVoltage;    //Volts
+  float maxCurrent_HW;    //0-4096
+  float maxCurrent_motor; //0-4096
+  float maxCurrent_batt;  //0-4096
+  float maxCurrent_regen; //0-4096
+  float maxBusVoltage;    //0-4096
+  float minBusVoltage;    //0-4096
   float maxTemp_FETs;     //degC
 } mc_limits;
