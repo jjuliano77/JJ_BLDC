@@ -406,13 +406,6 @@ void controlLoop(){
       break;
     case MC_STATE_FAULT:
       //do stuff
-      //just blink for now so we know what happened
-      // if (blinkTimer >= 500){
-      //   digitalWriteFast(LED_PIN, HIGH);
-      //   blinkTimer = 0;
-      // }else{
-      //   digitalWriteFast(LED_PIN, LOW);
-      // }
 
       //If fault has cleared, transition out. This should probably be smart enough
       //to transition back to MC_STATE_DRIVE when appropriate
@@ -524,40 +517,19 @@ void outputStats(){
   Serial.print(vBattery_raw * BUS_VOLTAGE_FACTOR);
   Serial.print('\t');
 //  Serial.print(countsToVolts(iSense1_raw) * SHUNT_CURRENT_FACTOR); //current in Amps
-  Serial.print(iSense1_raw);
-  Serial.print('\t');
+  // Serial.print(iSense1_raw);
+  // Serial.print('\t');
 //  Serial.print(motorCurrentDuty);
-  Serial.print(iSense2_raw);
-  Serial.print('\t');
+  // Serial.print(iSense2_raw);
+  // Serial.print('\t');
   Serial.print(motorCurrent_Avg);
   Serial.print('\t');
   Serial.print(motorCurrent_Avg * dutyCycleFloat); //This should be average battery current
   Serial.print('\t');
-//  Serial.print(motorCurrent_mA);
-//  Serial.print('\t');
-//  Serial.print(configData.dutyCycle_max);
-//  Serial.print('\t');
   Serial.print(dutyCycleFloat,2);
   Serial.print('\t');
-//  Serial.print(vSenseA_raw * BUS_VOLTAGE_FACTOR);    //Just not using these right now, save some bandwidth
-//  Serial.print('\t');
-//  Serial.print(vSenseB_raw * BUS_VOLTAGE_FACTOR);
-//  Serial.print('\t');
-//  Serial.print(vSenseC_raw * BUS_VOLTAGE_FACTOR);
-//  Serial.print('\t');
-//  Serial.print(vBemf * BUS_VOLTAGE_FACTOR);
-//  Serial.print('\t');
   Serial.print(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()));
   Serial.print('\t');
-//  Serial.print(motorCurrentSetpoint);
-//  Serial.print('\t');
-//  Serial.print(motorCurrentDuty);
-//  Serial.print('\t');
-//  Serial.print(throttle);
-//  Serial.print('\t');
-//  Serial.print(dutyCycle);
-//  Serial.print('\t');
-//  //uint32_t rpmCopy = eRPM;
   Serial.print(tachometer._tachTimer);
   Serial.print('\t');
   Serial.print(tachometer.getRPM(),0);
@@ -702,7 +674,6 @@ void ftm0_isr(){
       PHASE_OFF_ISENSE = true;
       digitalWriteFast(LED_PIN, HIGH);
 
-      //adc->enableInterrupts(ADC_0);//commented out for troubleshooting 6-13-16
       adc->startSynchronizedSingleRead(ISENSE2,ISENSE1);
       FTM0_C0SC &= ~FTM_CSC_CHF;      //clear the flag
       return;                         //then bail
@@ -723,7 +694,6 @@ void ftm0_isr(){
   }else{
     //just start the chain of ADC readings now  //!!!I really should have some minumum PDB delay to avoid noise
 
-    //adc->enableInterrupts(ADC_0); //commented out for troubleshooting 6-13-16
     adc->startSynchronizedSingleRead(ISENSE2,ISENSE1);
   }
 
@@ -764,7 +734,6 @@ void pdb_isr(void){
   //Begin conversion of current samples on ADC0 and ADC1
   //This may be really inefficient but I want it to be understable for now
 
-  //adc->enableInterrupts(ADC_0); //commented out for troubleshooting 6-13-16
   adc->startSynchronizedSingleRead(ISENSE2,ISENSE1);
 
   PDB0_SC = PDB_CONFIG | PDB_SC_LDOK; // (also clears interrupt flag)
@@ -798,13 +767,13 @@ void adc0_isr(){
       //Is checking every single pulse really necessary? I don't know but i'll do it anyway
 
       ////////////Removed for troubleshooting 6-12-16///////////////////
-			// if((iSense1_raw > configData.maxCurrent_motor) || (iSense2_raw > configData.maxCurrent_motor)){
-      //   //Oh crap! We have exceded our limit
-      //   faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
-      //   controllerState = MC_STATE_FAULT;
-			// 	//interrupts();
-      //   faultShutdown();
-      // }
+			if((iSense1_raw > configData.maxCurrent_motor) || (iSense2_raw > configData.maxCurrent_motor)){
+        //Oh crap! We have exceded our limit
+        faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
+        controllerState = MC_STATE_FAULT;
+				//interrupts();
+        faultShutdown();
+      }
 			/////////////////////////////////////////////////////////////////
 
 			//interupts();
@@ -922,7 +891,7 @@ void commutate(){
 /////////////////////////////////////////////////////
 // write the state according to the position
 void writeBridgeState(uint8_t pos){
-	//noInterrupts();
+	noInterrupts();
   switch(pos){
     case 0://LOW B, HIGH A
 
@@ -1019,7 +988,7 @@ void writeBridgeState(uint8_t pos){
       //pwmout.pwmSWOCTRL(0x00); //Doesn't matter
       pwmout.pwmOUTMASK(0x3F);
   }
-	//interrupts();
+	interrupts();
 }
 
 //*******************************************************************
@@ -1102,17 +1071,17 @@ void cmdTest(){
 	Serial.print("\t");
 	Serial.println(throttle_offset);
 
-	noInterrupts();
-	int temp1 = adc->analogRead(ISENSE1,ADC_1);
-	int temp2 = adc->analogRead(ISENSE2,ADC_0);
-	int temp3 = adc->analogRead(THROTTLE,ADC_0);
-	interrupts();
+	// noInterrupts();
+	// int temp1 = adc->analogRead(ISENSE1,ADC_1);
+	// int temp2 = adc->analogRead(ISENSE2,ADC_0);
+	// int temp3 = adc->analogRead(THROTTLE,ADC_0);
+	// interrupts();
 
-	Serial.print(temp1);
-	Serial.print("\t");
-	Serial.print(temp2);
-	Serial.print("\t");
-	Serial.println(temp3);
+	// Serial.print(temp1);
+	// Serial.print("\t");
+	// Serial.print(temp2);
+	// Serial.print("\t");
+	// Serial.println(temp3);
 
 	Serial.print(iSense1_raw);
 	Serial.print("\t");
