@@ -14,7 +14,7 @@ class BldcStatus
 {
    public:
       BldcStatus(void);
-      ~BldcStatus();
+      //~BldcStatus();
 
       uint16_t getPhaseCurrent_Raw();
       uint16_t getFilteredPhaseCurrent_Raw();
@@ -39,20 +39,20 @@ class BldcStatus
       float getFetTemp_DegC(uint16_t);
 
       //Public members
-      volatile uint16_t  throttle;
-      volatile uint16_t lastThrottle;
+      static volatile uint16_t  throttle;
+      uint16_t lastThrottle;
       uint16_t throttle_offset  = 0;
 
-      volatile uint16_t iSense1_raw;
-      volatile uint16_t iSense2_raw;
-      uint16_t iSense1_offset;
-      uint16_t iSense2_offset;
+      static volatile uint16_t iSense1_raw;
+      static volatile uint16_t iSense2_raw;
+      uint16_t iSense1_offset = 0;
+      uint16_t iSense2_offset = 0;
 
-      volatile uint16_t vBus_raw;
+      static volatile uint16_t vBus_raw;
 
-      volatile uint16_t vBemf_raw;
+      static volatile uint16_t vBemf_raw;
 
-      volatile uint16_t fetTemp_raw;
+      static volatile uint16_t fetTemp_raw;
 
    private:
      //It would be cool to track consumed power eventually

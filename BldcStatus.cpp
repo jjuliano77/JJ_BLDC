@@ -11,11 +11,6 @@ BldcStatus::BldcStatus()
 
 }
 
-BldcStatus::~BldcStatus()
-{
-  //Really should never get here
-}
-
 //Store a new phase current reading
 void BldcStatus::updatePhaseCurrents(uint16_t adc_val1, uint16_t adc_val2)
 {

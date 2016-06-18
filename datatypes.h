@@ -34,18 +34,6 @@ typedef enum {
 	CONTROL_MODE_NONE
 } mc_control_mode;
 
-// typedef enum {
-// 	FAULT_CODE_NONE = 0,        // 0
-// 	FAULT_CODE_OVER_VOLTAGE,    // 1
-// 	FAULT_CODE_UNDER_VOLTAGE,   // 2
-// 	FAULT_CODE_DRV8302,         // 3
-//   FAULT_CODE_DRV8302_OC,      // 4
-// 	FAULT_CODE_ABS_SOFT_OC,     // 5
-// 	FAULT_CODE_OVER_TEMP_FET,   // 6
-// 	FAULT_CODE_OVER_TEMP_MOTOR,  // 7
-//   FAULT_CODE_HALL_SENSOR      // 8
-// } mc_fault_code;
-
 //Config data to be stored in EEPROM
 typedef struct {
   //misc
