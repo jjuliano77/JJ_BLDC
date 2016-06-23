@@ -9,7 +9,6 @@
 // Tachometer::Tachometer(volatile unsigned int* commStep){
 //   _commStep = commStep;
 // }
-Tachometer::Tachometer(){};
 
 void Tachometer::update(unsigned int commStep){
   _commStep = commStep;
@@ -24,7 +23,7 @@ void Tachometer::update(unsigned int commStep){
   }
 }
 
-void Tachometer::setWheelCircumference(float wheelCircumference){  
+void Tachometer::setWheelCircumference(float wheelCircumference){
   _wheelCircumference = wheelCircumference; //Just do this too while we are at it
 }
 

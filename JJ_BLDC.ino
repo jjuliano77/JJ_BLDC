@@ -120,17 +120,17 @@ elapsedMillis outputTimer;
 volatile uint16_t  throttle;
 volatile uint16_t lastThrottle;
 uint16_t throttle_offset  = 0;
-int iSense1_offset  = 0;
-int iSense2_offset  = 0;
+//int iSense1_offset  = 0;
+//int iSense2_offset  = 0;
 
-volatile int   iSense1_raw;
-volatile int   iSense2_raw;
-volatile uint16_t vSenseA_raw;
-volatile uint16_t vSenseB_raw;
-volatile uint16_t vSenseC_raw;
-volatile int16_t  vBemf; //must be signed. *this is only global for t-shooting & diagnostics
-volatile uint16_t vBattery_raw;
-uint16_t fetTemp_raw;
+//volatile int   iSense1_raw;
+//volatile int   iSense2_raw;
+//volatile uint16_t vSenseA_raw;
+//volatile uint16_t vSenseB_raw;
+//volatile uint16_t vSenseC_raw;
+//volatile int16_t  vBemf; //must be signed. *this is only global for t-shooting & diagnostics
+//volatile uint16_t vBattery_raw;
+//uint16_t fetTemp_raw;
 
 unsigned long prevTime = 0;
 
@@ -138,10 +138,10 @@ unsigned long prevTime = 0;
 boolean motorDirection = DIR_FORWARD;
 //boolean motorDirection = DIR_REVERSE;
 boolean PHASE_OFF_ISENSE;
-boolean drv_pwrGood = 0;
-boolean drv_fault = 0;
-boolean drv_octw = 0;
-boolean drv_dcCalDone = false;
+//boolean drv_pwrGood = 0;
+//boolean drv_fault = 0;
+//boolean drv_octw = 0;
+//boolean drv_dcCalDone = false;
 boolean regenEnabled = false;
 boolean serialStreamFlag = false;
 
@@ -191,8 +191,10 @@ IntervalTimer controlLoopTimer; //main control loop timer
 PID currentPID(&motorCurrent_Avg, &motorCurrentDuty, &motorCurrentSetpoint, DEFAULT_CURRENT_KP,DEFAULT_CURRENT_KI,DEFAULT_CURRENT_KD, DIRECT);
 //PID speedPID(&motorRPM, &speedDuty, &speedSetpoint, 1.0,5.0,0.0, DIRECT);
 
-//Create Tachometer object and give it a pointer to the commStep variable
+//Create Tachometer object
 Tachometer tachometer;
+//Try out new Status class
+BldcStatus status;
 
 static void FTM0_INT_ENABLE(void)  { FTM0_SC |= FTM_SC_TOIE; FTM0_C0SC |= FTM_CSC_CHIE; NVIC_ENABLE_IRQ(IRQ_FTM0);}
 static void FTM0_INT_DISABLE(void) { NVIC_ENABLE_IRQ(IRQ_FTM0); }
@@ -264,15 +266,14 @@ void setup() {
   digitalWriteFast(EN_GATE, LOW);
   delay(100);
   digitalWriteFast(EN_GATE, HIGH);
-	while(drv_fault){}; //Wait for it to be ready
+	while(!digitalReadFast(FAULT_IN)){}; //Wait for it to be ready
 
 	//noInterrupts(); //Just in case
   //doDc_Cal(); //Shunt offset calibration
-	while(drv_fault){};
 	digitalWriteFast(DC_CAL, HIGH);
-	delay(1000); //was 1000 6-11-16
-	iSense1_offset = adc->analogRead(ISENSE1,ADC_1);
-	iSense2_offset = adc->analogRead(ISENSE2,ADC_0);
+	delay(100); //was 1000 6-11-16
+	status.iSense1_offset = adc->analogRead(ISENSE1,ADC_1);
+	status.iSense2_offset = adc->analogRead(ISENSE2,ADC_0);
 	digitalWriteFast(DC_CAL, LOW);
 
   throttle_offset = adc->analogRead(THROTTLE,ADC_0); //Throttle offset calibration
@@ -352,10 +353,10 @@ void controlLoop(){
       break;
     case MC_STATE_STOPPED:
 
-      //Lets rezereo the shunt amplifiers while we are stopped
-      //noInterrupts(); //Just in case
-      //doDc_Cal();
-			//interrupts();
+      //I would like to rezereo the shunt amplifiers while we are stopped
+			//but a simple single analog read wasn't working when I tried. It seems
+			//like once we start doing SynchronizedSingleRead, we cant go back to a
+			//plain 'ol analogRead()'
 
       //check reverse switch here
       if(digitalReadFast(REV_SW)){
@@ -463,11 +464,11 @@ void saveConfig(){
 // Check the gate driver for faults. I still may want to handle this with interupts
 void checkDrv8302Faults(){
   //Lets check in on the DRV8302
-  drv_pwrGood = digitalReadFast(PWRGD_IN);  //power good = HI
+  boolean drv_pwrGood = digitalReadFast(PWRGD_IN);  //power good = HI
   //faultStatus.drv_pwrGood = digitalReadFast(PWRGD_IN);  //power good = HI
-  drv_fault   = !digitalReadFast(FAULT_IN); //fault = LOW
+  boolean drv_fault   = !digitalReadFast(FAULT_IN); //fault = LOW
   //faultStatus.drv_fault = !digitalReadFast(FAULT_IN); //fault = LOW
-  drv_octw    = !digitalReadFast(OCTW_IN);  //OC or OT = LOW
+  boolean drv_octw    = !digitalReadFast(OCTW_IN);  //OC or OT = LOW
   //faultStatus.drv_oc = !digitalReadFast(OCTW_IN);  //OC or OT = LOW
 
   if(!drv_pwrGood || drv_fault){
@@ -514,7 +515,7 @@ int calcDutyCycle(){
 //******************************************************
 //put this in a function just to clean up main loop
 void outputStats(){
-  Serial.print(vBattery_raw * BUS_VOLTAGE_FACTOR);
+  Serial.print(status.vBus_raw * BUS_VOLTAGE_FACTOR);
   Serial.print('\t');
 //  Serial.print(countsToVolts(iSense1_raw) * SHUNT_CURRENT_FACTOR); //current in Amps
   // Serial.print(iSense1_raw);
@@ -530,8 +531,8 @@ void outputStats(){
   Serial.print('\t');
   Serial.print(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()));
   Serial.print('\t');
-  Serial.print(tachometer._tachTimer);
-  Serial.print('\t');
+  // Serial.print(tachometer._tachTimer);
+  // Serial.print('\t');
   Serial.print(tachometer.getRPM(),0);
   Serial.print('\t');
 //  Serial.print(getMPH(),2);
@@ -556,38 +557,6 @@ void startupBlink(void){
     delay(100);
   }
 }
-///////////////////////////////////////////
-// Calibrate Offsets On Current Shunts
-void doDc_Cal(void) {
-	digitalWriteFast(DC_CAL, HIGH);
-	//while(drv_fault){}; //need to to implement fault stuff. Also, this could be better
-	delay(100); //was 1000 6-11-16
-
-	// long curr1_sum = 0;
-	// long curr2_sum = 0;
-	// int samples = 0;
-	//
-  // //Take a bunch of readings and average them.
-	// 	//adc->disableInterrupts(ADC_0);
-	// while(samples < 100) {  //was 1000 6-11-16
-  //         curr1_sum += adc->analogRead(ISENSE1,ADC_1);
-  //         curr2_sum += adc->analogRead(ISENSE2,ADC_0);
-  //         samples++;
-  //       };
-	// //adc->enableInterrupts(ADC_0);
-	//
-	// iSense1_offset = curr1_sum / samples;
-	// iSense2_offset = curr2_sum / samples;
-  //adc->disableInterrupts(ADC_0);
-	//noInterrupts();
-	iSense1_offset = adc->analogRead(ISENSE1,ADC_1);
-	iSense2_offset = adc->analogRead(ISENSE2,ADC_0);
-	//interrupts();
-  //adc->disableInterrupts(ADC_0);
-
-	digitalWriteFast(DC_CAL, LOW);
-	//drv_dcCalDone = true;
-}
 
 ////////////////////////////////////////////////////////
 // Get Motor Current in Amps From The Appropriate Shunt
@@ -607,23 +576,24 @@ int getMotorCurrent_mA(){
 
 int getMotorCurrent_Raw(){
 	//Get measurment depending on what commutation step we are currently in
+	//This needs to be fixed !!
 	switch(commStep){
     case 0:
-      return iSense1_raw;
+      return status.iSense2_raw;
     case 1:
-      return iSense1_raw;
+			//No shunt on PWM active here, I'm sampling current on
+			//the inactive side here
+      return status.iSense1_raw * -1;
     case 2:
-      return iSense2_raw;
+			//No shunt on PWM active here, I'm sampling current on
+			//the inactive side here
+      return status.iSense2_raw * -1;
     case 3:
-      return iSense2_raw;
+      return status.iSense1_raw;
     case 4:
-      //No shunt on PWM active here, I'm sampling current on
-      //the inactive side here
-      return iSense1_raw;
+      return status.iSense1_raw;
     case 5:
-      //No shunt on PWM active here, I'm sampling current on
-      //the inactive side here
-      return iSense2_raw;
+      return status.iSense2_raw;
   }
 }
 
@@ -668,9 +638,11 @@ void ftm0_isr(){
 
   //************************ 8-29-15 *******************
   //Experimenting with reading phase current during OFF period
+	//Ok, This works great, but I'm not sure if its really what I want
+
   //PHASE_OFF_ISENSE = false;
   if (FTM0_C0SC & FTM_CSC_CHF){     //Do we have a channel 0 match interupt?
-    if(commStep == 4 || commStep == 5){
+    if(commStep == 1 || commStep == 2){
       PHASE_OFF_ISENSE = true;
       digitalWriteFast(LED_PIN, HIGH);
 
@@ -733,7 +705,6 @@ void pdb_isr(void){
 
   //Begin conversion of current samples on ADC0 and ADC1
   //This may be really inefficient but I want it to be understable for now
-
   adc->startSynchronizedSingleRead(ISENSE2,ISENSE1);
 
   PDB0_SC = PDB_CONFIG | PDB_SC_LDOK; // (also clears interrupt flag)
@@ -744,16 +715,14 @@ void pdb_isr(void){
 // ADC ISR - A Whole Lot of Stuff Happens Here
 void adc0_isr(){
 
-  //noInterrupts(); //Going to try disabling
-
   uint8_t adc0Pin = ADC::sc1a2channelADC0[ADC0_SC1A&ADC_SC1A_CHANNELS]; // the bits 0-4 of ADC0_SC1A have the channel
   //uint8_t adc1Pin = ADC::sc1a2channelADC1[ADC1_SC1A&ADC_SC1A_CHANNELS]; // the bits 0-4 of ADC0_SC1A have the channel
 
   //Determine which reading(s) are ready
   if(adc0Pin == ISENSE2){ //We must be doing the synced phase current read
       syncReadResult = adc->readSynchronizedSingle();
-      iSense2_raw = syncReadResult.result_adc0 - iSense2_offset; //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
-      iSense1_raw = syncReadResult.result_adc1 - iSense1_offset;
+			status.iSense2Update(syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
+			status.iSense1Update(syncReadResult.result_adc1);
 
       //If we are doing PWM OFF I sense, we should not fire off the other measurments
       if(PHASE_OFF_ISENSE){
@@ -767,7 +736,7 @@ void adc0_isr(){
       //Is checking every single pulse really necessary? I don't know but i'll do it anyway
 
       ////////////Removed for troubleshooting 6-12-16///////////////////
-			if((iSense1_raw > configData.maxCurrent_motor) || (iSense2_raw > configData.maxCurrent_motor)){
+			if((status.iSense1_raw > configData.maxCurrent_motor) || (status.iSense2_raw > configData.maxCurrent_motor)){
         //Oh crap! We have exceded our limit
         faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
         controllerState = MC_STATE_FAULT;
@@ -776,25 +745,23 @@ void adc0_isr(){
       }
 			/////////////////////////////////////////////////////////////////
 
-			//interupts();
-
   }else if(adc0Pin == ASENSE || adc0Pin == BSENSE || adc0Pin == CSENSE){ //our bus voltage and BEMF readings are ready
       syncReadResult = adc->readSynchronizedSingle();
-      vBattery_raw = syncReadResult.result_adc1; //Grab the bus voltage and then..
+      status.vBus_raw = syncReadResult.result_adc1; //Grab the bus voltage and then..
 
       //..determine which phase we just sampled
       switch(adc0Pin){
         case ASENSE:
-          vSenseA_raw = syncReadResult.result_adc0;
-          vBemf = vSenseA_raw - (vBattery_raw / 2); //Set zero offset (Vbus / 2)
+          //vSenseA_raw = syncReadResult.result_adc0;
+          status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
           break;
         case BSENSE:
-          vSenseB_raw = syncReadResult.result_adc0;
-          vBemf = vSenseB_raw - (vBattery_raw / 2); //Set zero offset (Vbus / 2)
+          //vSenseB_raw = syncReadResult.result_adc0;
+          status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
           break;
         case CSENSE:
-          vSenseC_raw = syncReadResult.result_adc0;
-          vBemf = vSenseC_raw - (vBattery_raw / 2); //Set zero offset (Vbus / 2)
+          //vSenseC_raw = syncReadResult.result_adc0;
+          status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
           break;
         default:
           //WTF?
@@ -804,18 +771,15 @@ void adc0_isr(){
       //Now that the criticle stuff is out of the way, lets get a throttle reading
       //(and temperature!)
       adc->startSynchronizedSingleRead(THROTTLE,FET_TEMP);
-			//interrupts();
 
       //While thats converting, lets check if bus voltage has gotten to high
       // (like from uncontrolled regen)
-      if(vBattery_raw >= configData.maxBusVoltage){
+      if(status.vBus_raw >= configData.maxBusVoltage){
         //this needs to do something more sophisticated
         faultStatus |= FAULT_CODE_OVER_VOLTAGE; //OV
 //        controllerState = MC_STATE_FAULT;
-        //interupts();
         faultShutdown();
       }
-			//interupts()
 
   }else if(adc0Pin == THROTTLE){ //Get the throttle and temp reading
      //throttle = adc->readSingle() - throttle_offset;
@@ -825,7 +789,7 @@ void adc0_isr(){
      if(throttle > 4096){
        throttle = 0; //we must have gone less than 0 and wrapped around
      }
-     fetTemp_raw = syncReadResult.result_adc1;
+     status.fetTemp_raw = syncReadResult.result_adc1;
 
   }else{
      //ADC0_RA; //reset the interupt flag anyway
@@ -833,9 +797,8 @@ void adc0_isr(){
 
   //Lets update running avereges now that we are done
   motorCurrent_RA.addValue(getMotorCurrent());
-	fetTemp_RA.addValue(fetTemp_raw);
+	fetTemp_RA.addValue(status.fetTemp_raw);
 
-  //interupts();
 }
 
 ////////////////////////////////////////////////
@@ -1065,9 +1028,9 @@ void cmdUnknown(const char *command){
 //Test command
 void cmdTest(){
 	//doDc_Cal();
-	Serial.print(iSense1_offset);
+	Serial.print(status.iSense1_offset);
 	Serial.print("\t");
-	Serial.print(iSense2_offset);
+	Serial.print(status.iSense2_offset);
 	Serial.print("\t");
 	Serial.println(throttle_offset);
 
@@ -1083,9 +1046,9 @@ void cmdTest(){
 	// Serial.print("\t");
 	// Serial.println(temp3);
 
-	Serial.print(iSense1_raw);
+	Serial.print(status.iSense1_raw);
 	Serial.print("\t");
-	Serial.print(iSense2_raw);
+	Serial.print(status.iSense2_raw);
 	Serial.print("\t");
 	Serial.println(throttle);
 

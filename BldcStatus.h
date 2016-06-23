@@ -10,54 +10,56 @@
 
 #include <arduino.h>
 
-class BldcStatus
-{
+class BldcStatus{
    public:
-      BldcStatus(void);
-      //~BldcStatus();
 
-      uint16_t getPhaseCurrent_Raw();
-      uint16_t getFilteredPhaseCurrent_Raw();
+      int getPhaseCurrent_Raw();
+      int getFilteredPhaseCurrent_Raw();
       float getPhaseCurrent_Amps();
       float getFilteredPhaseCurrent_Amps();
-      void  updatePhaseCurrents(uint16_t, uint16_t); //just always do both or do update based on current comm step?
 
-      uint16_t getFilteredBattCurrent_Raw();
+      //Inline functions to update the phase current readings. It simply stores
+      //the readings and applies the offsets. It's not 100% necessary and could be 
+      //one function that takes both readings, but this seems more readable for the moment
+      void iSense1Update(int adcVal) {iSense1_raw = adcVal - iSense1_offset;}
+      void iSense2Update(int adcVal) {iSense2_raw = adcVal - iSense2_offset;}
+
+      int getFilteredBattCurrent_Raw();
       float getBattCurrent_Amps();
-      void  updateBattCurrent(uint16_t);
+      //void  updateBattCurrent(int);
 
-      uint16_t getBusVoltage_Raw();
-      uint16_t getVirtGround_Raw();
+      int getBusVoltage_Raw();
+      int getVirtGround_Raw();
       float getBusVoltage_Volts();
-      void updateBusVoltage(uint16_t);
-      void updateBemfVoltage(uint16_t);
+      //void updateBusVoltage(uint16_t);
+      //void updateBemfVoltage(uint16_t);
       void getBemfVoltage_Raw();
 
-      uint16_t getFetTemp_Raw();
-      void updateFetTemp(uint16_t);
-      uint16_t calcNtcRes(uint16_t);
-      float getFetTemp_DegC(uint16_t);
+      int getFetTemp_Raw();
+      //void updateFetTemp(int);
+      int calcNtcRes(int);
+      float getFetTemp_DegC(int);
 
       //Public members
-      static volatile uint16_t  throttle;
-      uint16_t lastThrottle;
-      uint16_t throttle_offset  = 0;
+      volatile int throttle;
+      int lastThrottle;
+      int throttle_offset  = 0;
 
-      static volatile uint16_t iSense1_raw;
-      static volatile uint16_t iSense2_raw;
-      uint16_t iSense1_offset = 0;
-      uint16_t iSense2_offset = 0;
+      volatile int iSense1_raw;
+      volatile int iSense2_raw;
+      int iSense1_offset = 0;
+      int iSense2_offset = 0;
 
-      static volatile uint16_t vBus_raw;
+      volatile int vBus_raw;
 
-      static volatile uint16_t vBemf_raw;
+      volatile int vBemf_raw;
 
-      static volatile uint16_t fetTemp_raw;
+      volatile int fetTemp_raw;
 
    private:
      //It would be cool to track consumed power eventually
      //I'll just put these here for now so I don't forget
-     uint16_t ampHrsUsed;
+     int ampHrsUsed;
      elapsedMillis ampHrTimer;
 
      const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
@@ -65,4 +67,46 @@ class BldcStatus
                                               //So - I = (Vshunt * 10) * 100
 
 };
+
+//PID Settings
+//IF YOU CHANGE THIS, YOU NEED TO CHANGE THE CONFIG VERSION!!!!
+typedef struct {
+  float p;
+  float i;
+  float d;
+} mc_pidSettings;
+
+//Config data to be stored in EEPROM
+typedef struct {
+  //IF YOU CHANGE THIS, YOU NEED TO CHANGE THE CONFIG VERSION!!!!
+  uint16_t throttleOut_max;    //0-4096
+  uint16_t throttleOut_min;    //0-4096
+  uint16_t dutyCycle_max;      //0-4096
+  uint16_t dutyCycle_min;      //0-4096
+  uint16_t polePairs;
+  uint16_t pwmOutFreq;         //Hz
+  uint8_t controlMode;
+  //PID params
+  // float currentControl_kP;
+  // float currentControl_kI;
+  // float currentControl_kD;
+  mc_pidSettings currentPid;
+
+  //Version info
+  float configVersion;  //We can check that this matches to see if data has been written before
+
+} mc_configData_NEW;
+//IF YOU CHANGE THIS, YOU NEED TO CHANGE THE CONFIG VERSION!!!!
+//stand alone limit Struct
+//Limit config data to be stored in EEPROM
+ typedef struct {
+  float maxCurrent_HW;    //0-4096
+  float maxCurrent_motor; //0-4096
+  float maxCurrent_batt;  //0-4096
+  float maxCurrent_regen; //0-4096
+  float maxBusVoltage;    //0-4096
+  float minBusVoltage;    //0-4096
+  float maxTemp_FETs;     //degC
+} mc_limits_NEW;
+
 #endif
