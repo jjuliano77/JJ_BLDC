@@ -721,6 +721,10 @@ void adc0_isr(){
   //Determine which reading(s) are ready
   if(adc0Pin == ISENSE2){ //We must be doing the synced phase current read
       syncReadResult = adc->readSynchronizedSingle();
+
+			// iSense2_raw = syncReadResult.result_adc0 - iSense2_offset; //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
+      // iSense1_raw = syncReadResult.result_adc1 - iSense1_offset;
+
 			status.iSense2Update(syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
 			status.iSense1Update(syncReadResult.result_adc1);
 
@@ -747,26 +751,27 @@ void adc0_isr(){
 
   }else if(adc0Pin == ASENSE || adc0Pin == BSENSE || adc0Pin == CSENSE){ //our bus voltage and BEMF readings are ready
       syncReadResult = adc->readSynchronizedSingle();
-      status.vBus_raw = syncReadResult.result_adc1; //Grab the bus voltage and then..
-
+      //status.vBus_raw = syncReadResult.result_adc1; //Grab the bus voltage and then..
+			status.vBusUpdate(syncReadResult.result_adc1);
+			status.vBemfUpdate(syncReadResult.result_adc0);
       //..determine which phase we just sampled
-      switch(adc0Pin){
-        case ASENSE:
-          //vSenseA_raw = syncReadResult.result_adc0;
-          status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
-          break;
-        case BSENSE:
-          //vSenseB_raw = syncReadResult.result_adc0;
-          status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
-          break;
-        case CSENSE:
-          //vSenseC_raw = syncReadResult.result_adc0;
-          status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
-          break;
-        default:
-          //WTF?
-          break;
-      }
+      // switch(adc0Pin){
+      //   case ASENSE:
+      //     //vSenseA_raw = syncReadResult.result_adc0;
+      //     status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
+      //     break;
+      //   case BSENSE:
+      //     //vSenseB_raw = syncReadResult.result_adc0;
+      //     status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
+      //     break;
+      //   case CSENSE:
+      //     //vSenseC_raw = syncReadResult.result_adc0;
+      //     status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
+      //     break;
+      //   default:
+      //     //WTF?
+      //     break;
+      // }
 
       //Now that the criticle stuff is out of the way, lets get a throttle reading
       //(and temperature!)

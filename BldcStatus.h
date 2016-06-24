@@ -19,8 +19,9 @@ class BldcStatus{
       float getFilteredPhaseCurrent_Amps();
 
       //Inline functions to update the phase current readings. It simply stores
-      //the readings and applies the offsets. It's not 100% necessary and could be 
-      //one function that takes both readings, but this seems more readable for the moment
+      //the readings and applies the offsets. It's not 100% necessary and I'm not
+      //even sure if it's the best way to handle this. It might be better to have
+      //the math exposed for troubleshooting.
       void iSense1Update(int adcVal) {iSense1_raw = adcVal - iSense1_offset;}
       void iSense2Update(int adcVal) {iSense2_raw = adcVal - iSense2_offset;}
 
@@ -31,9 +32,14 @@ class BldcStatus{
       int getBusVoltage_Raw();
       int getVirtGround_Raw();
       float getBusVoltage_Volts();
-      //void updateBusVoltage(uint16_t);
-      //void updateBemfVoltage(uint16_t);
       void getBemfVoltage_Raw();
+
+      //Inline functions to update the bus voltage readings. It simply stores
+      //the readings
+      void vBusUpdate(int adcVal)  {vBus_raw = adcVal;}
+      //Inline functions to update the BEMF voltage readings. It simply stores
+      //the readings and applies the offsets.
+      void vBemfUpdate(int adcVal) {vBemf_raw = adcVal - (vBus_raw / 2);}
 
       int getFetTemp_Raw();
       //void updateFetTemp(int);
