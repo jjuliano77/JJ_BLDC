@@ -9,46 +9,57 @@
 #define BldcStatus_h
 
 #include <arduino.h>
+#include "RunningAverage.h"
+#include "defaults.h"
 
 class BldcStatus{
    public:
-
+      BldcStatus():fetTemp_RA(RUNNING_AVG_BLOCK_SIZE), motorCurrent_RA(RUNNING_AVG_BLOCK_SIZE){}
       int getPhaseCurrent_Raw();
       int getFilteredPhaseCurrent_Raw();
       float getPhaseCurrent_Amps();
       float getFilteredPhaseCurrent_Amps();
 
-      //Inline functions to update the phase current readings. It simply stores
-      //the readings and applies the offsets. It's not 100% necessary and I'm not
+      int getFilteredBusCurrent_Raw();
+      float getBusCurrent_Amps();
+
+      int getBusVoltage_Raw();
+      int getVirtGround_Raw();
+      float getBusVoltage();
+      void getBemfVoltage_Raw();
+
+      int getFetTemp_Raw();
+      float getFetTemp_DegC();
+      int getFilteredFetTemp_Raw();
+      float getFilteredFetTemp_DegC();
+
+      int getThrottle() {return throttle;};
+      int getFilteredThrottle();
+
+      void setThrottleOffset(int); //Implement these later if needed, just set public members for now
+      void setCurrentOffsets(int, int);   //Implement these later if needed, just set public members for now
+
+      //Inline functions to update the readings. They simply store the readings
+      //and apply offsets where needed. It's not 100% necessary and I'm not
       //even sure if it's the best way to handle this. It might be better to have
       //the math exposed for troubleshooting.
       void iSense1Update(int adcVal) {iSense1_raw = adcVal - iSense1_offset;}
       void iSense2Update(int adcVal) {iSense2_raw = adcVal - iSense2_offset;}
-
-      int getFilteredBattCurrent_Raw();
-      float getBattCurrent_Amps();
-      //void  updateBattCurrent(int);
-
-      int getBusVoltage_Raw();
-      int getVirtGround_Raw();
-      float getBusVoltage_Volts();
-      void getBemfVoltage_Raw();
-
-      //Inline functions to update the bus voltage readings. It simply stores
-      //the readings
       void vBusUpdate(int adcVal)  {vBus_raw = adcVal;}
-      //Inline functions to update the BEMF voltage readings. It simply stores
-      //the readings and applies the offsets.
       void vBemfUpdate(int adcVal) {vBemf_raw = adcVal - (vBus_raw / 2);}
-
-      int getFetTemp_Raw();
-      //void updateFetTemp(int);
-      int calcNtcRes(int);
-      float getFetTemp_DegC(int);
+      void fetTempUpdate(int adcVal) {fetTemp_raw = adcVal;}
+      void throttleUpdate(int adcVal) {
+        lastThrottle = throttle;
+        throttle = adcVal - throttle_offset;
+        //I'm pretty sure this could be handled better!!!
+        if(throttle > 4096){
+          throttle = 0; //we must have gone less than 0 and wrapped around
+        }
+      }
 
       //Public members
-      volatile int throttle;
-      int lastThrottle;
+      volatile unsigned int throttle;
+      unsigned int lastThrottle;
       int throttle_offset  = 0;
 
       volatile int iSense1_raw;
@@ -57,16 +68,20 @@ class BldcStatus{
       int iSense2_offset = 0;
 
       volatile int vBus_raw;
-
       volatile int vBemf_raw;
-
       volatile int fetTemp_raw;
 
    private:
+     int calcNtcRes(int);
+
+    //  volatile int iSense1_raw;
+    //  volatile int iSense2_raw;
      //It would be cool to track consumed power eventually
      //I'll just put these here for now so I don't forget
      int ampHrsUsed;
      elapsedMillis ampHrTimer;
+     RunningAverage fetTemp_RA;
+     RunningAverage motorCurrent_RA;
 
      const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
      const int   SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10

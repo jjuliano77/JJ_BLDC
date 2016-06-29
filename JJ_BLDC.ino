@@ -110,6 +110,8 @@ volatile uint32_t bemfSampleTime = 0;    //Global because I want this to be acce
 volatile boolean zeroCrossFound = false; //Global because I want this to be accessable while testing
 unsigned long commDelay;
 
+unsigned int serialUpdatePeriod  = SERIAL_OUT_PERIOD;
+
 //volatile uint32_t eRotPeriod;   //Contains the most recent electrical rotation period in uS
 volatile uint32_t commPeriod;   //Contains the most recent commutation step period in uS
 //elapsedMicros tachTimer;
@@ -117,31 +119,13 @@ volatile uint32_t commPeriod;   //Contains the most recent commutation step peri
 elapsedMicros zcTimer;
 elapsedMillis outputTimer;
 
-volatile uint16_t  throttle;
-volatile uint16_t lastThrottle;
-uint16_t throttle_offset  = 0;
-//int iSense1_offset  = 0;
-//int iSense2_offset  = 0;
-
-//volatile int   iSense1_raw;
-//volatile int   iSense2_raw;
-//volatile uint16_t vSenseA_raw;
-//volatile uint16_t vSenseB_raw;
-//volatile uint16_t vSenseC_raw;
-//volatile int16_t  vBemf; //must be signed. *this is only global for t-shooting & diagnostics
-//volatile uint16_t vBattery_raw;
-//uint16_t fetTemp_raw;
-
 unsigned long prevTime = 0;
 
 //Flags
 boolean motorDirection = DIR_FORWARD;
 //boolean motorDirection = DIR_REVERSE;
 boolean PHASE_OFF_ISENSE;
-//boolean drv_pwrGood = 0;
-//boolean drv_fault = 0;
-//boolean drv_octw = 0;
-//boolean drv_dcCalDone = false;
+
 boolean regenEnabled = false;
 boolean serialStreamFlag = false;
 
@@ -240,6 +224,7 @@ void setup() {
   //Setup serial command callbacks
   sCmd.addCommand("v", cmdGetVersion);      //Report the firmware version
   sCmd.addCommand("s", cmdStream);          //Start/Stop streaming out readings
+	sCmd.addCommand("r", cmdRate);						//Update rate for streaming
   sCmd.addCommand("conf", cmdPrintConfig);  //Print out the config struct data
   sCmd.addCommand("save", cmdSaveConfig);   //Save current config to EEPROM
   sCmd.addCommand("tmax", cmdThrotMax);     //Test setting throttle max
@@ -266,7 +251,7 @@ void setup() {
   digitalWriteFast(EN_GATE, LOW);
   delay(100);
   digitalWriteFast(EN_GATE, HIGH);
-	while(!digitalReadFast(FAULT_IN)){}; //Wait for it to be ready
+	while(!digitalReadFast(FAULT_IN)){}; //Wait for it to be ready. I should really add a time out and fault here
 
 	//noInterrupts(); //Just in case
   //doDc_Cal(); //Shunt offset calibration
@@ -276,7 +261,7 @@ void setup() {
 	status.iSense2_offset = adc->analogRead(ISENSE2,ADC_0);
 	digitalWriteFast(DC_CAL, LOW);
 
-  throttle_offset = adc->analogRead(THROTTLE,ADC_0); //Throttle offset calibration
+  status.throttle_offset = adc->analogRead(THROTTLE,ADC_0); //Throttle offset calibration
 	//interrupts();
   //faultCode = FAULT_CODE_NONE;    //The whole fault code thing needs to be done better
 
@@ -320,7 +305,7 @@ void loop() {
 
  //Send status info out
  if(serialStreamFlag == true){
-   if(outputTimer > SERIAL_OUT_PERIOD){
+   if(outputTimer > serialUpdatePeriod){
      outputStats();
      outputTimer = 0;
    }
@@ -365,7 +350,7 @@ void controlLoop(){
         motorDirection = DIR_FORWARD;
       }
       //check for throttle input
-      if(throttle >= configData.throttleOut_min){
+      if(status.getThrottle() >= configData.throttleOut_min){
         controllerState = MC_STATE_DRIVE;
         //tmpDuty = calcDutyCycle();
       }
@@ -409,10 +394,10 @@ void controlLoop(){
       //do stuff
 
       //If fault has cleared, transition out. This should probably be smart enough
-      //to transition back to MC_STATE_DRIVE when appropriate
+      //to do somthing about specific faults and to transition back to MC_STATE_DRIVE when appropriate
       if(faultStatus == FAULT_CODE_NONE){
       //if((faultStatus.drv_pwrGood | faultStatus.drv_fault | faultStatus.drv_oc |) == false){
-        controllerState = MC_STATE_STOPPED; //THIS IS MAKING A BIG ASSUMPTION!! Need to fix
+        controllerState = MC_STATE_DRIVE; //THIS IS MAKING A BIG ASSUMPTION!! Need to fix
       }
 
       break;
@@ -498,7 +483,7 @@ int calcDutyCycle(){
       break;
     case CONTROL_MODE_CURRENT:
       //Map throttle to current range.Probably need to do this mapping better!!
-      motorCurrentSetpoint = map(throttle,0,configData.throttleOut_max,0,configData.maxCurrent_motor); //*11-29 NEEDS TO REFLECT CHANGE TO mA
+      motorCurrentSetpoint = map(status.getThrottle(),0,configData.throttleOut_max,0,configData.maxCurrent_motor); //*11-29 NEEDS TO REFLECT CHANGE TO mA
       //motorCurrentSetpoint = throttle; //lets try this real quick
       currentPID.Compute();
       duty = motorCurrentDuty;
@@ -506,7 +491,7 @@ int calcDutyCycle(){
     case CONTROL_MODE_DUTY:
 
       //Throttle is going to need to be mapped to actual range!!
-      duty = map(throttle,0,configData.throttleOut_max,0,4000); //need Max throttle to equal 4096 (4000 now) here
+      duty = map(status.getThrottle(),0,configData.throttleOut_max,0,4000); //need Max throttle to equal 4096 (4000 now) here
       break;
   }
   return duty;
@@ -515,7 +500,7 @@ int calcDutyCycle(){
 //******************************************************
 //put this in a function just to clean up main loop
 void outputStats(){
-  Serial.print(status.vBus_raw * BUS_VOLTAGE_FACTOR);
+  Serial.print(status.getBusVoltage());
   Serial.print('\t');
 //  Serial.print(countsToVolts(iSense1_raw) * SHUNT_CURRENT_FACTOR); //current in Amps
   // Serial.print(iSense1_raw);
@@ -525,27 +510,27 @@ void outputStats(){
   // Serial.print('\t');
   Serial.print(motorCurrent_Avg);
   Serial.print('\t');
-  Serial.print(motorCurrent_Avg * dutyCycleFloat); //This should be average battery current
-  Serial.print('\t');
-  Serial.print(dutyCycleFloat,2);
-  Serial.print('\t');
+  // Serial.print(motorCurrent_Avg * dutyCycleFloat); //This should be average battery current
+  // Serial.print('\t');
+  // Serial.print(dutyCycleFloat,2);
+  // Serial.print('\t');
   Serial.print(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()));
-  Serial.print('\t');
+  Serial.println('\t');
   // Serial.print(tachometer._tachTimer);
   // Serial.print('\t');
-  Serial.print(tachometer.getRPM(),0);
-  Serial.print('\t');
+  // Serial.print(tachometer.getRPM(),0);
+  // Serial.print('\t');
 //  Serial.print(getMPH(),2);
 //  Serial.print('\t');
-  Serial.print(faultStatus,BIN); //print out faultStatus bits
-  Serial.print('\t');
+  // Serial.print(faultStatus,BIN); //print out faultStatus bits
+  // Serial.print('\t');
 //  Serial.print(hallState,BIN);
 //  Serial.print('\t');
-  Serial.print(controllerState);
-  Serial.print('\t');
+  // Serial.print(controllerState);
+  // Serial.print('\t');
 //  Serial.print(bemfSampleTime);
 //  Serial.print('\t');
-  Serial.println(commStep);
+//  Serial.println(commStep);
 }
 ////////////////////////////////////////////////////////////
 //Silly hard coded startup blink. Blinks out version
@@ -789,12 +774,10 @@ void adc0_isr(){
   }else if(adc0Pin == THROTTLE){ //Get the throttle and temp reading
      //throttle = adc->readSingle() - throttle_offset;
      syncReadResult = adc->readSynchronizedSingle();
-     lastThrottle = throttle; //Save the old throttle value.
-     throttle = syncReadResult.result_adc0 - throttle_offset;
-     if(throttle > 4096){
-       throttle = 0; //we must have gone less than 0 and wrapped around
-     }
-     status.fetTemp_raw = syncReadResult.result_adc1;
+
+		 status.throttleUpdate(syncReadResult.result_adc0);
+
+     status.fetTempUpdate(syncReadResult.result_adc1);
 
   }else{
      //ADC0_RA; //reset the interupt flag anyway
@@ -1024,6 +1007,16 @@ void cmdThrotMax(){
     Serial.println("Did you forget somthing?");
   }
 }
+
+void cmdRate(){
+  char *arg;
+  arg = sCmd.next();
+  if(arg != NULL){
+    serialUpdatePeriod = atoi(arg); //Probably need some validation here
+  }else{
+    Serial.println("Did you forget somthing?");
+  }
+}
 ///////////////////////////////////////////////
 //Handle an unknown command
 void cmdUnknown(const char *command){
@@ -1037,7 +1030,7 @@ void cmdTest(){
 	Serial.print("\t");
 	Serial.print(status.iSense2_offset);
 	Serial.print("\t");
-	Serial.println(throttle_offset);
+	Serial.println(status.throttle_offset);
 
 	// noInterrupts();
 	// int temp1 = adc->analogRead(ISENSE1,ADC_1);
@@ -1055,6 +1048,6 @@ void cmdTest(){
 	Serial.print("\t");
 	Serial.print(status.iSense2_raw);
 	Serial.print("\t");
-	Serial.println(throttle);
+	Serial.println(status.getThrottle());
 
 }
