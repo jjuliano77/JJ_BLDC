@@ -16,6 +16,7 @@ class Tachometer{
     float getRPM();
     float getMPH();
     float getERPM(); //Public for dubugging
+    unsigned long getTimeSinceCommutation() {return _tachTimer;}   //I might need access to this for zero cross detection later
 
     void setWheelCircumference(float);
     void setGearRatio(float);

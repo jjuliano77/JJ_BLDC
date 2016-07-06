@@ -70,7 +70,7 @@
 #define DIR_FORWARD 1
 #define DIR_REVERSE 0
 
-#define BRIDGE_STATE_ALIGN 10
+#define BRIDGE_STATE_ALIGN 10 //This should probably be an enum
 #define BRIDGE_STATE_BRAKE 11
 #define BRIDGE_STATE_COAST 12
 
@@ -105,10 +105,12 @@ volatile unsigned int commStep;              //holds the current commutation sta
 volatile uint8_t lastcommStep;
 volatile uint8_t bemfPin;                //holds the AIN pin for the current BEMF sensing phase.
 volatile uint8_t hallState = 0;          //Global because I want this to be accessable while testing
-volatile uint8_t bemfCommStep = 0;
-volatile uint32_t bemfSampleTime = 0;    //Global because I want this to be accessable while testing
+
+//Sensorless variables, once I get it working I'll clean it up
 volatile boolean zeroCrossFound = false; //Global because I want this to be accessable while testing
-unsigned long commDelay;
+unsigned long int zeroCrossTime;
+unsigned long sensorlessCommDelay;
+int sensorlessCommAdvance;
 
 unsigned int serialUpdatePeriod  = SERIAL_OUT_PERIOD;
 
@@ -116,7 +118,7 @@ unsigned int serialUpdatePeriod  = SERIAL_OUT_PERIOD;
 volatile uint32_t commPeriod;   //Contains the most recent commutation step period in uS
 //elapsedMicros tachTimer;
 //elapsedMicros controlLoopTimer;
-elapsedMicros zcTimer;
+//elapsedMicros zcTimer;
 elapsedMillis outputTimer;
 
 unsigned long prevTime = 0;
@@ -146,6 +148,8 @@ volatile double dutyCycleFloat; //Float representation of duty cycle 0.0 to 1.0 
 double lastDutyCycle;
 
 mc_state controllerState;
+mc_state lastControllerState;
+
 mc_control_mode controlMode;
 //mc_fault_code faultCode;
 mc_fb_mode feedbackMode;
@@ -179,6 +183,12 @@ PID currentPID(&motorCurrent_Avg, &motorCurrentDuty, &motorCurrentSetpoint, DEFA
 Tachometer tachometer;
 //Try out new Status class
 BldcStatus status;
+
+//Experimenting with Meter objects
+BldcMeter busVoltage(RUNNING_AVG_BLOCK_SIZE, "V", false);
+BldcMeter phaseCurrent(RUNNING_AVG_BLOCK_SIZE, "A", false);
+BldcMeter throttle(RUNNING_AVG_BLOCK_SIZE,"", false);           //Not really necessary, but the filtering might be handy
+BldcMeter fetTemperature(RUNNING_AVG_BLOCK_SIZE, "DegC", true);
 
 static void FTM0_INT_ENABLE(void)  { FTM0_SC |= FTM_SC_TOIE; FTM0_C0SC |= FTM_CSC_CHIE; NVIC_ENABLE_IRQ(IRQ_FTM0);}
 static void FTM0_INT_DISABLE(void) { NVIC_ENABLE_IRQ(IRQ_FTM0); }
@@ -233,8 +243,8 @@ void setup() {
 
 
 
-  fetTemp_RA.clear();
-  motorCurrent_RA.clear();
+  status.fetTemp_RA.clear();
+  status.motorCurrent_RA.clear();
 
   adc->setAveraging(0, ADC_0);   // We need fast conversion rates so lets try 0 averaging
   adc->setResolution(12, ADC_0); // set bits of resolution. 12 is fine
@@ -325,7 +335,7 @@ void controlLoop(){
 
   motorCurrent = getMotorCurrent(); //I think we need to call this first to update the current
   //motorCurrent_Avg = fabs(motorCurrent_RA.getAverage()); // * dutyCycleFloat);
-  motorCurrent_Avg = motorCurrent_RA.getAverage();
+  motorCurrent_Avg = status.motorCurrent_RA.getAverage();
 
   //****************************************
   //Start of different state idea
@@ -367,7 +377,7 @@ void controlLoop(){
 
       //Check For Over Temp
       //TO DO: Need to implement a WARNING_TEMP that simply reduces the SW current limit (once that works)
-      if(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()) > configData.maxFetTemp){   //Try this with RA filtered readings
+      if(NTC_CONVERT_TEMP(status.fetTemp_RA.getAverage()) > configData.maxFetTemp){   //Try this with RA filtered readings
         //Oh crap, getting hot!
         faultStatus |= FAULT_CODE_OVER_TEMP_FET;
         //Need to add test for this fault in other areas
@@ -508,15 +518,21 @@ void outputStats(){
 //  Serial.print(motorCurrentDuty);
   // Serial.print(iSense2_raw);
   // Serial.print('\t');
+	Serial.print(status.vBemf_raw);
+  Serial.print('\t');
+	Serial.print(zeroCrossFound);
+  Serial.print('\t');
+	Serial.print(zeroCrossTime);
+  Serial.print('\t');
   Serial.print(motorCurrent_Avg);
   Serial.print('\t');
   // Serial.print(motorCurrent_Avg * dutyCycleFloat); //This should be average battery current
   // Serial.print('\t');
   // Serial.print(dutyCycleFloat,2);
   // Serial.print('\t');
-  Serial.print(NTC_CONVERT_TEMP(fetTemp_RA.getAverage()));
-  Serial.println('\t');
-  // Serial.print(tachometer._tachTimer);
+  Serial.print(NTC_CONVERT_TEMP(status.fetTemp_RA.getAverage()));
+  Serial.print('\t');
+  // Serial.print(tachometer.getTimeSinceCommutation());
   // Serial.print('\t');
   // Serial.print(tachometer.getRPM(),0);
   // Serial.print('\t');
@@ -529,8 +545,8 @@ void outputStats(){
   // Serial.print(controllerState);
   // Serial.print('\t');
 //  Serial.print(bemfSampleTime);
-//  Serial.print('\t');
-//  Serial.println(commStep);
+ 	Serial.print('\t');
+ 	Serial.println(commStep);
 }
 ////////////////////////////////////////////////////////////
 //Silly hard coded startup blink. Blinks out version
@@ -629,8 +645,7 @@ void ftm0_isr(){
   if (FTM0_C0SC & FTM_CSC_CHF){     //Do we have a channel 0 match interupt?
     if(commStep == 1 || commStep == 2){
       PHASE_OFF_ISENSE = true;
-      digitalWriteFast(LED_PIN, HIGH);
-
+      //digitalWriteFast(LED_PIN, HIGH);
       adc->startSynchronizedSingleRead(ISENSE2,ISENSE1);
       FTM0_C0SC &= ~FTM_CSC_CHF;      //clear the flag
       return;                         //then bail
@@ -707,15 +722,12 @@ void adc0_isr(){
   if(adc0Pin == ISENSE2){ //We must be doing the synced phase current read
       syncReadResult = adc->readSynchronizedSingle();
 
-			// iSense2_raw = syncReadResult.result_adc0 - iSense2_offset; //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
-      // iSense1_raw = syncReadResult.result_adc1 - iSense1_offset;
-
 			status.iSense2Update(syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
 			status.iSense1Update(syncReadResult.result_adc1);
 
       //If we are doing PWM OFF I sense, we should not fire off the other measurments
       if(PHASE_OFF_ISENSE){
-        digitalWriteFast(LED_PIN, LOW);
+        //digitalWriteFast(LED_PIN, LOW);
         PHASE_OFF_ISENSE = false;
       }else{
         adc->startSynchronizedSingleRead(bemfPin,VSENSE); //Fire off bus voltage and BEMF readings
@@ -738,25 +750,73 @@ void adc0_isr(){
       syncReadResult = adc->readSynchronizedSingle();
       //status.vBus_raw = syncReadResult.result_adc1; //Grab the bus voltage and then..
 			status.vBusUpdate(syncReadResult.result_adc1);
-			status.vBemfUpdate(syncReadResult.result_adc0);
-      //..determine which phase we just sampled
-      // switch(adc0Pin){
-      //   case ASENSE:
-      //     //vSenseA_raw = syncReadResult.result_adc0;
-      //     status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
-      //     break;
-      //   case BSENSE:
-      //     //vSenseB_raw = syncReadResult.result_adc0;
-      //     status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
-      //     break;
-      //   case CSENSE:
-      //     //vSenseC_raw = syncReadResult.result_adc0;
-      //     status.vBemf_raw = syncReadResult.result_adc0 - (status.vBus_raw / 2); //Set zero offset (Vbus / 2)
-      //     break;
-      //   default:
-      //     //WTF?
-      //     break;
-      // }
+			//status.vBemfUpdate(syncReadResult.result_adc0);
+			status.vBemfUpdate(syncReadResult.result_adc0 - (syncReadResult.result_adc1 / 2)); //Offset reading to be centered on vBus/2
+
+			//////////////////////////////////////////////////////
+			//!!!I NEED TO DO ZERO-CROSS DETECTION RIGHT HERE!!!
+			//
+			// commStep 0 => Phase C falling
+			// commStep 1 => Phase B rising
+			// commStep 2 => Phase A falling
+			// commStep 3 => Phase C rising
+			// commStep 4 => Phase B falling
+			// commStep 5 => Phase A rising
+			////////////////////////////////////////////////////////
+			const unsigned int timeZcOff = 250;  //Blanking Period after commutation to skip ZC detection in uS, NO CLUE WHAT THIS SHOULD BE!!
+																					 //For now -> 250uS = 2 pulses at 8000hz
+			unsigned int adcIsrTime = tachometer.getTimeSinceCommutation();
+			if((adcIsrTime >= timeZcOff) && !zeroCrossFound){
+				/*TO DO LIST*/
+				static int lastBemfReading;
+				static unsigned long int lastAdcIsrTime;
+				static unsigned long int lastZeroCrossTime;
+				int bemfReading = status.vBemf_raw;
+
+				//Offset reading to be centered on virtual ground (vBus/2). I May want to just do this above when the adc is read
+				//bemfReading = status.vBemf_raw - (status.vBus_raw / 2);
+
+				//Check if BEMF is falling, if it is, invert it
+				if((commStep & 0x01) == 0 ){
+					bemfReading = -bemfReading;
+				}
+
+				//Check for BEMF zero cross
+				if(bemfReading >= 0){
+					//ZC detected! Do interpolation to figure out actual time of ZC
+					// or, possibly do integration method here if I can figure that out
+
+					//Blinky light for testing
+					if(adc0Pin == ASENSE){
+						digitalWriteFast(LED_PIN, HIGH);
+					}
+
+					//Blinky light for testing
+					if(adc0Pin == ASENSE){
+						digitalWriteFast(LED_PIN, HIGH);
+					}else if (adc0Pin == BSENSE || adc0Pin == CSENSE){
+						digitalWriteFast(LED_PIN, LOW);
+					}
+
+					/*   BEMF Integration?  */
+
+					//interpolation
+					int deltaV = bemfReading - lastBemfReading;
+					int deltaT = adcIsrTime -lastAdcIsrTime;
+					lastZeroCrossTime = zeroCrossTime; //do I really need this?
+					zeroCrossTime = (-lastBemfReading / deltaV ) * deltaT + lastAdcIsrTime;
+					//zeroCrossTime = (-lastBemfReading / (bemfReading - lastBemfReading) ) * (adcIsrTime -lastAdcIsrTime) + lastAdcIsrTime
+					//sensorlessCommDelay =
+					zeroCrossFound = true;
+				}
+
+				//BEMF Integration?
+
+				//Save measured BEMF voltage and time for referance next PWM cycle
+				lastAdcIsrTime = adcIsrTime;
+				lastBemfReading = bemfReading;
+			}
+			//////////////////////////////////////////////////////
 
       //Now that the criticle stuff is out of the way, lets get a throttle reading
       //(and temperature!)
@@ -784,8 +844,8 @@ void adc0_isr(){
   }
 
   //Lets update running avereges now that we are done
-  motorCurrent_RA.addValue(getMotorCurrent());
-	fetTemp_RA.addValue(status.fetTemp_raw);
+  status.motorCurrent_RA.addValue(getMotorCurrent());
+	status.fetTemp_RA.addValue(status.fetTemp_raw);
 
 }
 
@@ -834,6 +894,38 @@ void commutate(){
   //Running sensorless
   }else{   //Must be sensorless
     //Need to implement
+		switch(controllerState){
+			case MC_STATE_DRIVE:
+				if(zeroCrossFound){
+					if(tachometer.getTimeSinceCommutation() >= ((zeroCrossTime * 2) + sensorlessCommAdvance)){
+						//This is probably not right AND doesnt account for direction!
+						commStep++;
+						if(commStep >= 6){
+							commStep = 0;
+						}
+
+						tachometer.update(commStep);
+						zeroCrossFound = false;
+					}
+				}
+				writeBridgeState(commStep);
+				break;
+			case MC_STATE_ALIGNMENT:
+				writeBridgeState(BRIDGE_STATE_ALIGN); //Align the rotor
+				static unsigned int alignmentCounter;
+				if(alignmentCounter >= 500){ //500 20uS intervals (100mS) MAKE THIS CONFIGURABLE LATER!!
+					lastControllerState = controllerState;
+					controllerState = MC_STATE_START;
+				}
+				break;
+			case MC_STATE_START:
+				//Need to ramp up open loop here
+
+				break;
+			case MC_STATE_FAULT:
+				writeBridgeState(BRIDGE_STATE_COAST);
+				break;
+		}
   }
 //  }
   //interrupts();
@@ -843,6 +935,7 @@ void commutate(){
 // write the state according to the position
 void writeBridgeState(uint8_t pos){
 	noInterrupts();
+	zeroCrossFound = false; //!!!!!!this is just temporary for testing!!!!!
   switch(pos){
     case 0://LOW B, HIGH A
 
@@ -856,7 +949,7 @@ void writeBridgeState(uint8_t pos){
         pwmout.pwmSWOCTRL(0x0808);  // Was 0x0202
       }
       bemfPin = CSENSE; //C is the un-driven phase for BEMF sensing
-      break;
+			break;
     case 1://LOW C, HIGH A
 
       if(regenEnabled){

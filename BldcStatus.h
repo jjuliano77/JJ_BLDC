@@ -20,11 +20,13 @@ class BldcStatus{
       float getPhaseCurrent_Amps();
       float getFilteredPhaseCurrent_Amps();
 
+      int getBusCurrent_Raw();
       int getFilteredBusCurrent_Raw();
       float getBusCurrent_Amps();
+      float getFilteredBusCurrent_Amps();
 
       int getBusVoltage_Raw();
-      int getVirtGround_Raw();
+      //int getVirtGround_Raw();
       float getBusVoltage();
       void getBemfVoltage_Raw();
 
@@ -71,6 +73,9 @@ class BldcStatus{
       volatile int vBemf_raw;
       volatile int fetTemp_raw;
 
+      RunningAverage fetTemp_RA;
+      RunningAverage motorCurrent_RA;
+
    private:
      int calcNtcRes(int);
 
@@ -80,8 +85,8 @@ class BldcStatus{
      //I'll just put these here for now so I don't forget
      int ampHrsUsed;
      elapsedMillis ampHrTimer;
-     RunningAverage fetTemp_RA;
-     RunningAverage motorCurrent_RA;
+    //  RunningAverage fetTemp_RA;
+    //  RunningAverage motorCurrent_RA;
 
      const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
      const int   SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10
@@ -89,8 +94,41 @@ class BldcStatus{
 
 };
 
-//PID Settings
-//IF YOU CHANGE THIS, YOU NEED TO CHANGE THE CONFIG VERSION!!!!
+//Brainstorming a meter class that could be re-used for all measurments
+class BldcMeter{
+  volatile int _rawValue;
+  int   _offset = 0;
+  float _scaleFactor = 1;
+  char  *_units;
+  bool _isThermistor;
+
+  RunningAverage filteredValue;    //I'm just going to do a running average using the class for now
+
+  float calcNtcTemperature(int);        //Just for thermisor measurements
+
+
+  public:
+    BldcMeter(int samplesToAverage, char *units, bool isThermistor);
+
+    int   getRawValue(void) {return _rawValue;}
+    int   getRawValueFiltered(void);
+    float getScaledValue(void);
+    float getScaledValueFiltered(void);
+
+    float getScaleFactor(void) {return _scaleFactor;}
+    int   getOffset(void) {return _offset;}
+
+    void  setOffset(int);
+    void  setScaleFactor(float);
+
+    void  update(int adcVal) {
+      _rawValue = adcVal - _offset;       //Do the update inline as it is likely to be used inside an ISR
+      filteredValue.addValue(_rawValue);  //Add value to the running average buffer too
+    }
+};
+
+//PID Settings !!!NOT CURRENTLY USING THESE!!!
+//IF YOU CHANGE THESE, YOU NEED TO CHANGE THE CONFIG VERSION!!!!
 typedef struct {
   float p;
   float i;
