@@ -25,9 +25,9 @@
 // but convert to raw counts when initializing the config data structure. This way
 // it will be easier to read, but won't matter "under the hood". Also, I can have
 // scailing factors defined for each and be able to tweak them later if necessary
-#define MOTOR_OC_LIMIT    110     //default motor overcurrent limit (Amps)
-#define BATT_OC_LIMIT     60       //default battery current limit (Amps) !Actually not sure about this one because its caclulated by multiplying phase current by % duty
-#define DRV_OC_LIMIT      100      //default HW (DRV8302) overcurrent limit in Amps
+#define MOTOR_OC_LIMIT    110    //default motor overcurrent limit (Amps)
+#define BATT_OC_LIMIT     60     //default battery current limit (Amps) !Actually not sure about this one because its caclulated by multiplying phase current by % duty
+#define DRV_OC_LIMIT      100    //default HW (DRV8302) overcurrent limit in Amps
 #define REGEN_OC_LIMIT	  20	   //default regen current limit in Amps
 #define BUS_OV_LIMIT      42     //software over voltage limit (Volts)
 #define BUS_UV_LIMIT      10	   //software under voltage limit (Volts)

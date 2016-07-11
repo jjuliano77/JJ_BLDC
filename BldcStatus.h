@@ -127,6 +127,40 @@ class BldcMeter{
     }
 };
 
+////////////////////////////////////////////////////////
+// Buffer Class to hold triggered real time aquisition
+// ultimately, I might want to pull the running average
+// out of this buffer as well. not sure yet
+class aquisitionBuffer{
+  unsigned int _size;
+  unsigned int _idx;
+  unsigned int _postTriggerSamples;
+  bool _isTriggered;
+  enum state {
+    preTrigger = 0,
+    postTrigger,
+    complete
+  };
+  state aquisitionState = preTrigger;
+  int * _buffer;
+
+public:
+  aquisitionBuffer(int);
+  ~aquisitionBuffer(void);
+
+  void addSample(int);
+  int  getAverage(int); //wont use this, just keeping in for referance now
+  int  getSample(unsigned int);
+  void trigger(void);
+  void arm(void);
+  bool samplesReady(void);
+  unsigned int bufferSize(void){return _size;}
+  // void setTriggerMode(int mode); //software, Internal value, External value
+  // void setTriggerInput(int *trigInput);
+  // void setTriggerThreshold(int trigThreshold);
+  void clear(void);
+};
+
 //PID Settings !!!NOT CURRENTLY USING THESE!!!
 //IF YOU CHANGE THESE, YOU NEED TO CHANGE THE CONFIG VERSION!!!!
 typedef struct {

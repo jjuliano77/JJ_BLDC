@@ -131,6 +131,11 @@ boolean PHASE_OFF_ISENSE;
 boolean regenEnabled = false;
 boolean serialStreamFlag = false;
 
+//Global for troubleshooting 7-8-16
+boolean drv_pwrGood;
+boolean drv_fault;
+boolean drv_octw;
+
 //Fault code "fake register" (look into best way to do this)
 uint16_t faultStatus = 0;   // | drv_pwrGood | drv_fault | drv_octw
                            // |      0      |     0     |     0
@@ -183,6 +188,9 @@ PID currentPID(&motorCurrent_Avg, &motorCurrentDuty, &motorCurrentSetpoint, DEFA
 Tachometer tachometer;
 //Try out new Status class
 BldcStatus status;
+
+//Testing aquisitionBuffer class
+aquisitionBuffer scopeCurrent(1000);
 
 //Experimenting with Meter objects
 BldcMeter busVoltage(RUNNING_AVG_BLOCK_SIZE, "V", false);
@@ -300,7 +308,11 @@ void setup() {
   controlLoopTimer.begin(controlLoop, 1000);
   initPDB(); //initialize PBD
   FTM0_INT_ENABLE(); //Enable timer overflow interupt on FTM0 (Motor PWM output)
-  adc->enableInterrupts(ADC_0);
+
+	//testing aquisitionBuffer class here
+	scopeCurrent.arm();
+
+	adc->enableInterrupts(ADC_0);
 
   Serial.print("JJ_BLDC V");
   Serial.print(JJBLDC_FW_VERSION,2);
@@ -319,7 +331,16 @@ void loop() {
      outputStats();
      outputTimer = 0;
    }
+ }else if(scopeCurrent.samplesReady()){
+	 //This is just to test the aquisitionBuffer class
+	 //obviosly need something better later
+
+	 for(int i=0; i < scopeCurrent.bufferSize();i++){
+		 Serial.println(scopeCurrent.getSample(i));
+	 }
+	 scopeCurrent.arm(); //re-arm
  }
+
 }
 
 ///////////////////////////////////////////////////////
@@ -459,11 +480,11 @@ void saveConfig(){
 // Check the gate driver for faults. I still may want to handle this with interupts
 void checkDrv8302Faults(){
   //Lets check in on the DRV8302
-  boolean drv_pwrGood = digitalReadFast(PWRGD_IN);  //power good = HI
+  drv_pwrGood = digitalReadFast(PWRGD_IN);  //power good = HI
   //faultStatus.drv_pwrGood = digitalReadFast(PWRGD_IN);  //power good = HI
-  boolean drv_fault   = !digitalReadFast(FAULT_IN); //fault = LOW
+  drv_fault   = !digitalReadFast(FAULT_IN); //fault = LOW
   //faultStatus.drv_fault = !digitalReadFast(FAULT_IN); //fault = LOW
-  boolean drv_octw    = !digitalReadFast(OCTW_IN);  //OC or OT = LOW
+  drv_octw    = !digitalReadFast(OCTW_IN);  //OC or OT = LOW
   //faultStatus.drv_oc = !digitalReadFast(OCTW_IN);  //OC or OT = LOW
 
   if(!drv_pwrGood || drv_fault){
@@ -518,11 +539,11 @@ void outputStats(){
 //  Serial.print(motorCurrentDuty);
   // Serial.print(iSense2_raw);
   // Serial.print('\t');
-	Serial.print(status.vBemf_raw);
-  Serial.print('\t');
-	Serial.print(zeroCrossFound);
-  Serial.print('\t');
-	Serial.print(zeroCrossTime);
+	// Serial.print(status.vBemf_raw);
+  // Serial.print('\t');
+	// Serial.print(zeroCrossFound);
+  // Serial.print('\t');
+	Serial.print(status.throttle);
   Serial.print('\t');
   Serial.print(motorCurrent_Avg);
   Serial.print('\t');
@@ -538,10 +559,16 @@ void outputStats(){
   // Serial.print('\t');
 //  Serial.print(getMPH(),2);
 //  Serial.print('\t');
-  // Serial.print(faultStatus,BIN); //print out faultStatus bits
-  // Serial.print('\t');
-//  Serial.print(hallState,BIN);
-//  Serial.print('\t');
+ Serial.print(drv_pwrGood);
+ Serial.print('\t');
+ Serial.print(drv_fault);
+ Serial.print('\t');
+ Serial.print(drv_octw);
+ Serial.print('\t');
+ Serial.print(faultStatus,BIN); //print out faultStatus bits
+ Serial.print('\t');
+ Serial.print(hallState,BIN);
+ Serial.print('\t');
   // Serial.print(controllerState);
   // Serial.print('\t');
 //  Serial.print(bemfSampleTime);
@@ -724,6 +751,9 @@ void adc0_isr(){
 
 			status.iSense2Update(syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
 			status.iSense1Update(syncReadResult.result_adc1);
+
+			//test aquisitionBuffer class here
+			scopeCurrent.addSample(status.iSense1_raw);
 
       //If we are doing PWM OFF I sense, we should not fire off the other measurments
       if(PHASE_OFF_ISENSE){
@@ -1118,12 +1148,14 @@ void cmdUnknown(const char *command){
 ////////////////////////////////////////////////
 //Test command
 void cmdTest(){
+	scopeCurrent.trigger();
+
 	//doDc_Cal();
-	Serial.print(status.iSense1_offset);
-	Serial.print("\t");
-	Serial.print(status.iSense2_offset);
-	Serial.print("\t");
-	Serial.println(status.throttle_offset);
+	// Serial.print(status.iSense1_offset);
+	// Serial.print("\t");
+	// Serial.print(status.iSense2_offset);
+	// Serial.print("\t");
+	// Serial.println(status.throttle_offset);
 
 	// noInterrupts();
 	// int temp1 = adc->analogRead(ISENSE1,ADC_1);
@@ -1137,10 +1169,10 @@ void cmdTest(){
 	// Serial.print("\t");
 	// Serial.println(temp3);
 
-	Serial.print(status.iSense1_raw);
-	Serial.print("\t");
-	Serial.print(status.iSense2_raw);
-	Serial.print("\t");
-	Serial.println(status.getThrottle());
+	// Serial.print(status.iSense1_raw);
+	// Serial.print("\t");
+	// Serial.print(status.iSense2_raw);
+	// Serial.print("\t");
+	// Serial.println(status.getThrottle());
 
 }

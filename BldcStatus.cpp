@@ -77,3 +77,94 @@ float BldcMeter::calcNtcTemperature(int adcVal){
   int r = ((4095.0 * 10000.0) / adcVal - 10000.0);
   return (1.0 / ((logf(r / 10000.0) / 3434.0) + (1.0 / 298.15)) - 273.15);
 }
+
+//////////////////////////////////////////////////////////////////
+// Aquisition Buffer member functions
+//
+aquisitionBuffer::aquisitionBuffer(int size){
+  _size = size;
+  _buffer = (int*) malloc(_size * sizeof(int));
+  if (_buffer == NULL) _size = 0;
+  clear();
+}
+
+aquisitionBuffer::~aquisitionBuffer(void){
+  if (_buffer != NULL) free(_buffer);
+}
+
+void aquisitionBuffer::addSample(int value){
+  if (aquisitionState == preTrigger || aquisitionState == postTrigger){ //only add if we are aquiring
+    if (_buffer == NULL) return;
+
+    _buffer[_idx] = value;
+
+    _idx++;
+    if (_idx == _size) _idx = 0;  // if at the end, loop around to 0
+
+    if (aquisitionState == postTrigger){
+      if(_postTriggerSamples < _size / 2){
+        _postTriggerSamples++;
+      }else{
+        aquisitionState = complete;
+        _postTriggerSamples = 0;
+      }
+    }
+  }
+}
+
+int aquisitionBuffer::getSample(unsigned int sampleIndex){
+
+  if(aquisitionState == complete){
+    sampleIndex = _idx + sampleIndex;
+    if (sampleIndex >= _size) sampleIndex = 0;  // if at the end, loop around to 0 (used >= as crude way to catch out-of-bounds)
+    return _buffer[sampleIndex];
+  }else{
+    return NAN;
+  }
+}
+
+bool aquisitionBuffer::samplesReady(void){
+  if(aquisitionState == complete){
+    return true;
+  }else{
+    return false;
+  }
+}
+
+void aquisitionBuffer::trigger(void){
+  aquisitionState = postTrigger;
+}
+
+void aquisitionBuffer::arm(void){
+  _postTriggerSamples = 0;
+  _idx = 0; //why not reset this too?
+  aquisitionState = preTrigger;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+//This actually wont get used. I just realized that if this is a triggered aquisition,
+//we can't be doing a running average off the same buffer.If we did, the rusult would be
+// frozen everytime there is a trigger! duh. I'll it keep here for now, as a referance
+int aquisitionBuffer::getAverage(int windowSize){
+
+  //I'd rather add to the buffer as fast as possible, so I'll calc the sum only when asked for
+  int pos = _idx - windowSize;
+  int sum = 0;
+
+  if (pos < 0){
+    pos = _size - pos;  //Loop back from end of array
+  }
+
+  for(int i = 0; i < _idx; i++){
+    if(pos++ == _size) pos = 0; //If we hit the end, wrap arround
+    sum += _buffer[pos];
+  }
+  //return the average
+  return sum / windowSize;
+}
+
+void aquisitionBuffer::clear(void){
+  _postTriggerSamples = 0;
+  _idx = 0;
+  for (int i = 0; i< _size; i++) _buffer[i] = 0;
+}
