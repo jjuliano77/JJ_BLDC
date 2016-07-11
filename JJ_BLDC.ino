@@ -189,8 +189,8 @@ Tachometer tachometer;
 //Try out new Status class
 BldcStatus status;
 
-//Testing aquisitionBuffer class
-aquisitionBuffer scopeCurrent(1000);
+//Testing acquisitionBuffer class
+acquisitionBuffer scopeCurrent(1000);
 
 //Experimenting with Meter objects
 BldcMeter busVoltage(RUNNING_AVG_BLOCK_SIZE, "V", false);
@@ -309,7 +309,7 @@ void setup() {
   initPDB(); //initialize PBD
   FTM0_INT_ENABLE(); //Enable timer overflow interupt on FTM0 (Motor PWM output)
 
-	//testing aquisitionBuffer class here
+	//testing acquisitionBuffer class here
 	scopeCurrent.arm();
 
 	adc->enableInterrupts(ADC_0);
@@ -332,7 +332,7 @@ void loop() {
      outputTimer = 0;
    }
  }else if(scopeCurrent.samplesReady()){
-	 //This is just to test the aquisitionBuffer class
+	 //This is just to test the acquisitionBuffer class
 	 //obviosly need something better later
 
 	 for(int i=0; i < scopeCurrent.bufferSize();i++){
@@ -752,7 +752,7 @@ void adc0_isr(){
 			status.iSense2Update(syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
 			status.iSense1Update(syncReadResult.result_adc1);
 
-			//test aquisitionBuffer class here
+			//test acquisitionBuffer class here
 			scopeCurrent.addSample(status.iSense1_raw);
 
       //If we are doing PWM OFF I sense, we should not fire off the other measurments

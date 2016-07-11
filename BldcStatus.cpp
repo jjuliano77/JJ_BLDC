@@ -79,21 +79,21 @@ float BldcMeter::calcNtcTemperature(int adcVal){
 }
 
 //////////////////////////////////////////////////////////////////
-// Aquisition Buffer member functions
+// acquisition Buffer member functions
 //
-aquisitionBuffer::aquisitionBuffer(int size){
+acquisitionBuffer::acquisitionBuffer(int size){
   _size = size;
   _buffer = (int*) malloc(_size * sizeof(int));
   if (_buffer == NULL) _size = 0;
   clear();
 }
 
-aquisitionBuffer::~aquisitionBuffer(void){
+acquisitionBuffer::~acquisitionBuffer(void){
   if (_buffer != NULL) free(_buffer);
 }
 
-void aquisitionBuffer::addSample(int value){
-  if (aquisitionState == preTrigger || aquisitionState == postTrigger){ //only add if we are aquiring
+void acquisitionBuffer::addSample(int value){
+  if (acquisitionState == preTrigger || acquisitionState == postTrigger){ //only add if we are aquiring
     if (_buffer == NULL) return;
 
     _buffer[_idx] = value;
@@ -101,20 +101,20 @@ void aquisitionBuffer::addSample(int value){
     _idx++;
     if (_idx == _size) _idx = 0;  // if at the end, loop around to 0
 
-    if (aquisitionState == postTrigger){
+    if (acquisitionState == postTrigger){
       if(_postTriggerSamples < _size / 2){
         _postTriggerSamples++;
       }else{
-        aquisitionState = complete;
+        acquisitionState = complete;
         _postTriggerSamples = 0;
       }
     }
   }
 }
 
-int aquisitionBuffer::getSample(unsigned int sampleIndex){
+int acquisitionBuffer::getSample(unsigned int sampleIndex){
 
-  if(aquisitionState == complete){
+  if(acquisitionState == complete){
     sampleIndex = _idx + sampleIndex;
     if (sampleIndex >= _size) sampleIndex = 0;  // if at the end, loop around to 0 (used >= as crude way to catch out-of-bounds)
     return _buffer[sampleIndex];
@@ -123,29 +123,29 @@ int aquisitionBuffer::getSample(unsigned int sampleIndex){
   }
 }
 
-bool aquisitionBuffer::samplesReady(void){
-  if(aquisitionState == complete){
+bool acquisitionBuffer::samplesReady(void){
+  if(acquisitionState == complete){
     return true;
   }else{
     return false;
   }
 }
 
-void aquisitionBuffer::trigger(void){
-  aquisitionState = postTrigger;
+void acquisitionBuffer::trigger(void){
+  acquisitionState = postTrigger;
 }
 
-void aquisitionBuffer::arm(void){
+void acquisitionBuffer::arm(void){
   _postTriggerSamples = 0;
   _idx = 0; //why not reset this too?
-  aquisitionState = preTrigger;
+  acquisitionState = preTrigger;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
-//This actually wont get used. I just realized that if this is a triggered aquisition,
+//This actually wont get used. I just realized that if this is a triggered acquisition,
 //we can't be doing a running average off the same buffer.If we did, the rusult would be
 // frozen everytime there is a trigger! duh. I'll it keep here for now, as a referance
-int aquisitionBuffer::getAverage(int windowSize){
+int acquisitionBuffer::getAverage(int windowSize){
 
   //I'd rather add to the buffer as fast as possible, so I'll calc the sum only when asked for
   int pos = _idx - windowSize;
@@ -163,7 +163,7 @@ int aquisitionBuffer::getAverage(int windowSize){
   return sum / windowSize;
 }
 
-void aquisitionBuffer::clear(void){
+void acquisitionBuffer::clear(void){
   _postTriggerSamples = 0;
   _idx = 0;
   for (int i = 0; i< _size; i++) _buffer[i] = 0;

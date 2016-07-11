@@ -131,7 +131,7 @@ class BldcMeter{
 // Buffer Class to hold triggered real time aquisition
 // ultimately, I might want to pull the running average
 // out of this buffer as well. not sure yet
-class aquisitionBuffer{
+class acquisitionBuffer{
   unsigned int _size;
   unsigned int _idx;
   unsigned int _postTriggerSamples;
@@ -141,12 +141,12 @@ class aquisitionBuffer{
     postTrigger,
     complete
   };
-  state aquisitionState = preTrigger;
+  state acquisitionState = preTrigger;
   int * _buffer;
 
 public:
-  aquisitionBuffer(int);
-  ~aquisitionBuffer(void);
+  acquisitionBuffer(int);
+  ~acquisitionBuffer(void);
 
   void addSample(int);
   int  getAverage(int); //wont use this, just keeping in for referance now
