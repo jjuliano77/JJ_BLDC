@@ -89,7 +89,7 @@ class BldcStatus{
     //  RunningAverage motorCurrent_RA;
 
      const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
-     const int   SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10
+     const float   SHUNT_CURRENT_FACTOR = 100.0; //Its * 100 because the diff amp already has a gain of 10
                                               //So - I = (Vshunt * 10) * 100
 
 };

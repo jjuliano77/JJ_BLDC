@@ -5,7 +5,7 @@
 */
 
 #define DEFAULT_CONTROL_MODE 0 //0 = straight duty cycle control
-#define MAX_THROTTLE_OUTPUT 3000  //This needs to be configurable
+#define MAX_THROTTLE_OUTPUT 2760  //This needs to be configurable
 #define MIN_THROTTLE          10  //This needs to be configurable
 #define MAX_MOTOR_RPM       2000  //This needs to be configurable
 #define STOPPED_RPM_THRESH  10    //At what RPM do transition to STOPPED
@@ -17,7 +17,7 @@
 #define  MIN_DUTY  0.05           //5%
 #define  MAX_DUTY  0.95           //95%
 #define  MIN_DUTY_COUNTS  200  //This isn't working for some reason -> (2 ^ PWM_OUT_RESOLUTION) * MIN_DUTY //This might come in handy
-#define  MAX_DUTY_COUNTS  3900 //This isn't working for some reason -> (2 ^ PWM_OUT_RESOLUTION) * MAX_DUTY //This might come in handy
+#define  MAX_DUTY_COUNTS  4000 //This isn't working for some reason -> (2 ^ PWM_OUT_RESOLUTION) * MAX_DUTY //This might come in handy
 
 //******************
 // Limits
@@ -29,7 +29,7 @@
 #define BATT_OC_LIMIT     60     //default battery current limit (Amps) !Actually not sure about this one because its caclulated by multiplying phase current by % duty
 #define DRV_OC_LIMIT      100    //default HW (DRV8302) overcurrent limit in Amps
 #define REGEN_OC_LIMIT	  20	   //default regen current limit in Amps
-#define BUS_OV_LIMIT      42     //software over voltage limit (Volts)
+#define BUS_OV_LIMIT      48     //software over voltage limit (Volts)
 #define BUS_UV_LIMIT      10	   //software under voltage limit (Volts)
 #define WARNING_FET_TEMP  60       //Temperature where we should lower the SW current limit
 #define MAX_FET_TEMP      80       //Max allowed FET temp
@@ -43,7 +43,7 @@
 #define RUNNING_AVG_BLOCK_SIZE 100
 //*******************
 //Timing config values
-#define PWMFREQ 8000            //PWM frequency in hz. This should be a configurable parameter eventually
+#define PWMFREQ 10000            //PWM frequency in hz. This should be a configurable parameter eventually
 //#define PWM_PERIOD 1000000 * (1 / PWMFREQ)
 #define SERIAL_OUT_PERIOD 10    //mS
 #define CONTROL_LOOP_PERIOD 1000 //uS

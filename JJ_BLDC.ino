@@ -86,12 +86,13 @@
 #define NTC_RES(adc_val)	((4095.0 * 10000.0) / adc_val - 10000.0)
 #define NTC_CONVERT_TEMP(adc_val)	(1.0 / ((logf(NTC_RES(adc_val) / 10000.0) / 3434.0) + (1.0 / 298.15)) - 273.15)
 
-
+//bool CrudeDubugFlag = false;
 
 const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
 //const int   mV_SF = 15;     //Counts to bus mV (voltage divider)
-const int   SHUNT_CURRENT_FACTOR = -100; //Its * 100 because the diff amp already has a gain of 10
+const float SHUNT_CURRENT_FACTOR = 100.0; //Its * 100 because the diff amp already has a gain of 10
                                          //So - I = (Vshunt * 10) * 100
+const float DRV_OC_FACTOR = 10.0;  //Not used yet, no idea what it should be yet either
 
 //******** Hall state table from DEV BLDC code for testing **************
 // hall state table
@@ -190,7 +191,10 @@ Tachometer tachometer;
 BldcStatus status;
 
 //Testing acquisitionBuffer class
-acquisitionBuffer scopeCurrent(1000);
+acquisitionBuffer scopeCurrent1(1000);
+//acquisitionBuffer scopeCurrent2(1000);
+acquisitionBuffer scopeBemfVolts(1000);
+acquisitionBuffer scopeBusVolts(1000);
 
 //Experimenting with Meter objects
 BldcMeter busVoltage(RUNNING_AVG_BLOCK_SIZE, "V", false);
@@ -202,7 +206,8 @@ static void FTM0_INT_ENABLE(void)  { FTM0_SC |= FTM_SC_TOIE; FTM0_C0SC |= FTM_CS
 static void FTM0_INT_DISABLE(void) { NVIC_ENABLE_IRQ(IRQ_FTM0); }
 
 static float countsToVolts(float counts) {return (counts*3.3)/adc->getMaxValue();}
-static int voltsToCounts(float volts) {return (int)(volts * adc->getMaxValue()) / 3.3;}
+static int voltsToCounts(float volts) {return (volts * adc->getMaxValue()) / 3.3;} // THIS DOESNT WORK!!
+//static int voltsToCounts(float volts) {return (int)(volts * 4096) / 3.3;} // THIS DOESNT WORK!!
 
 static int countsTo_mV(int counts) {return ((counts*3300)/(int)adc->getMaxValue());}        //reduce need for FP
 static int mvToCounts(int mv) {return ((mv*(int)adc->getMaxValue())/3.3);}
@@ -226,18 +231,11 @@ void setup() {
 
   pinMode(REV_SW, INPUT_PULLUP);   // Reverse switch input
 
-  analogWriteResolution(12);
+  //analogWriteResolution(12);
 
   Serial.begin(115200);
   //delay(1000);
   startupBlink();
-
-  loadConfig();  //Load configuration from EEPROM
-
-  //the [ * 20 ] is just a fudge factor
-  //need to figure out real scaling still
-  analogWrite(HW_OC_ADJ, configData.maxCurrent_HW * 20); //rough guess at 40A,(60 = 0.48V) WRONG!! I'll figure it out later
-                                             // From datasheet -> Ioc = Vds/Rds
 
   //Setup serial command callbacks
   sCmd.addCommand("v", cmdGetVersion);      //Report the firmware version
@@ -248,8 +246,6 @@ void setup() {
   sCmd.addCommand("tmax", cmdThrotMax);     //Test setting throttle max
 	sCmd.addCommand("test", cmdTest);         //Use this for testing stuff
   sCmd.setDefaultHandler(cmdUnknown);       //Handler for unrecognized command
-
-
 
   status.fetTemp_RA.clear();
   status.motorCurrent_RA.clear();
@@ -264,6 +260,14 @@ void setup() {
   adc->setConversionSpeed(ADC_HIGH_SPEED, ADC_1); // change the conversion speed
   adc->setSamplingSpeed(ADC_HIGH_SPEED, ADC_1);   // change the sampling speed
 
+	loadConfig();  //Load configuration from EEPROM
+
+  //the [ * 20 ] is just a fudge factor
+  //need to figure out real scaling still
+  //analogWrite(HW_OC_ADJ, configData.maxCurrent_HW * 20); //rough guess at 40A,(60 = 0.48V) WRONG!! I'll figure it out later
+                                             // From datasheet -> Ioc = Vds/Rds
+  analogWrite(HW_OC_ADJ, 256); //Just DAC counts for testing 1000 should be around 80Amps THIS DOESNT WORK AS EXPECTED - NEED TO FIGURE OUT
+
   //Wake up the gate driver
   pinMode(EN_GATE, OUTPUT);
   digitalWriteFast(EN_GATE, LOW);
@@ -275,8 +279,8 @@ void setup() {
   //doDc_Cal(); //Shunt offset calibration
 	digitalWriteFast(DC_CAL, HIGH);
 	delay(100); //was 1000 6-11-16
-	status.iSense1_offset = adc->analogRead(ISENSE1,ADC_1);
-	status.iSense2_offset = adc->analogRead(ISENSE2,ADC_0);
+	status.iSense1_offset = -adc->analogRead(ISENSE1,ADC_1);
+	status.iSense2_offset = -adc->analogRead(ISENSE2,ADC_0);
 	digitalWriteFast(DC_CAL, LOW);
 
   status.throttle_offset = adc->analogRead(THROTTLE,ADC_0); //Throttle offset calibration
@@ -310,7 +314,10 @@ void setup() {
   FTM0_INT_ENABLE(); //Enable timer overflow interupt on FTM0 (Motor PWM output)
 
 	//testing acquisitionBuffer class here
-	scopeCurrent.arm();
+	scopeCurrent1.arm();
+	//scopeCurrent2.arm();
+	scopeBemfVolts.arm();
+	scopeBusVolts.arm();
 
 	adc->enableInterrupts(ADC_0);
 
@@ -331,14 +338,24 @@ void loop() {
      outputStats();
      outputTimer = 0;
    }
- }else if(scopeCurrent.samplesReady()){
+ }else if(scopeCurrent1.samplesReady() /*&& scopeCurrent2.samplesReady()*/
+		  && scopeBemfVolts.samplesReady() && scopeBusVolts.samplesReady()){
 	 //This is just to test the acquisitionBuffer class
 	 //obviosly need something better later
 
-	 for(int i=0; i < scopeCurrent.bufferSize();i++){
-		 Serial.println(scopeCurrent.getSample(i));
+	 for(int i=0; i < scopeCurrent1.bufferSize();i++){
+		 Serial.print(scopeCurrent1.getSample(i));
+		 Serial.print("\t");
+		//  Serial.print(scopeCurrent2.getSample(i));
+		//  Serial.print("\t");
+		 Serial.print(scopeBemfVolts.getSample(i));
+		 Serial.print("\t");
+		 Serial.println(scopeBusVolts.getSample(i));
 	 }
-	 scopeCurrent.arm(); //re-arm
+	 scopeCurrent1.arm(); //re-arm
+	 //scopeCurrent2.arm();
+	 scopeBemfVolts.arm();
+	 scopeBusVolts.arm();
  }
 
 }
@@ -459,8 +476,9 @@ void loadConfig(){
     configData.maxCurrent_motor = voltsToCounts(MOTOR_OC_LIMIT / SHUNT_CURRENT_FACTOR); //used
     configData.maxCurrent_batt = voltsToCounts(BATT_OC_LIMIT / SHUNT_CURRENT_FACTOR); //Not used yet
     configData.maxCurrent_regen = voltsToCounts(REGEN_OC_LIMIT / SHUNT_CURRENT_FACTOR);
-    configData.maxBusVoltage = voltsToCounts(BUS_OV_LIMIT / BUS_VOLTAGE_FACTOR);
-    configData.minBusVoltage = voltsToCounts(BUS_UV_LIMIT / BUS_VOLTAGE_FACTOR);
+    //configData.maxBusVoltage = voltsToCounts(BUS_OV_LIMIT / BUS_VOLTAGE_FACTOR);
+		configData.maxBusVoltage = (int)(BUS_OV_LIMIT / BUS_VOLTAGE_FACTOR);
+    configData.minBusVoltage = (int)(BUS_UV_LIMIT / BUS_VOLTAGE_FACTOR);
     configData.maxFetTemp = MAX_FET_TEMP; //This can stay as deg C for now
     //Write current config version
     configData.configVersion = JJBLDC_CONFIG_VERSION;
@@ -533,19 +551,22 @@ int calcDutyCycle(){
 void outputStats(){
   Serial.print(status.getBusVoltage());
   Serial.print('\t');
-//  Serial.print(countsToVolts(iSense1_raw) * SHUNT_CURRENT_FACTOR); //current in Amps
-  // Serial.print(iSense1_raw);
-  // Serial.print('\t');
-//  Serial.print(motorCurrentDuty);
-  // Serial.print(iSense2_raw);
+	Serial.print(configData.maxBusVoltage);
+	Serial.print('\t');
+  Serial.print(status.iSense1_raw);
+  Serial.print('\t');
+  Serial.print(motorCurrent_Avg);
+  Serial.print('\t');
+  Serial.print(configData.maxCurrent_motor);
+  Serial.print('\t');
+  //Serial.print(motorCurrentDuty);
+  // Serial.print(CrudeDubugFlag);
   // Serial.print('\t');
 	// Serial.print(status.vBemf_raw);
   // Serial.print('\t');
 	// Serial.print(zeroCrossFound);
   // Serial.print('\t');
 	Serial.print(status.throttle);
-  Serial.print('\t');
-  Serial.print(motorCurrent_Avg);
   Serial.print('\t');
   // Serial.print(motorCurrent_Avg * dutyCycleFloat); //This should be average battery current
   // Serial.print('\t');
@@ -557,20 +578,20 @@ void outputStats(){
   // Serial.print('\t');
   // Serial.print(tachometer.getRPM(),0);
   // Serial.print('\t');
-//  Serial.print(getMPH(),2);
-//  Serial.print('\t');
- Serial.print(drv_pwrGood);
- Serial.print('\t');
- Serial.print(drv_fault);
- Serial.print('\t');
- Serial.print(drv_octw);
- Serial.print('\t');
+  Serial.print(tachometer.getMPH(),2);
+  Serial.print('\t');
+ // Serial.print(drv_pwrGood);
+ // Serial.print('\t');
+ // Serial.print(drv_fault);
+ // Serial.print('\t');
+ // Serial.print(drv_octw);
+ // Serial.print('\t');
  Serial.print(faultStatus,BIN); //print out faultStatus bits
  Serial.print('\t');
  Serial.print(hallState,BIN);
  Serial.print('\t');
-  // Serial.print(controllerState);
-  // Serial.print('\t');
+ Serial.print(controllerState);
+ Serial.print('\t');
 //  Serial.print(bemfSampleTime);
  	Serial.print('\t');
  	Serial.println(commStep);
@@ -605,24 +626,28 @@ int getMotorCurrent_mA(){
 int getMotorCurrent_Raw(){
 	//Get measurment depending on what commutation step we are currently in
 	//This needs to be fixed !!
-	switch(commStep){
-    case 0:
-      return status.iSense2_raw;
-    case 1:
-			//No shunt on PWM active here, I'm sampling current on
-			//the inactive side here
-      return status.iSense1_raw * -1;
-    case 2:
-			//No shunt on PWM active here, I'm sampling current on
-			//the inactive side here
-      return status.iSense2_raw * -1;
-    case 3:
-      return status.iSense1_raw;
-    case 4:
-      return status.iSense1_raw;
-    case 5:
-      return status.iSense2_raw;
-  }
+
+	// switch(commStep){
+  //   case 0:
+  //     return status.iSense2_raw;
+  //   case 1:
+	// 		//No shunt on PWM active here, I'm sampling current on
+	// 		//the inactive side here
+  //     return status.iSense1_raw * -1;
+  //   case 2:
+	// 		//No shunt on PWM active here, I'm sampling current on
+	// 		//the inactive side here
+  //     return status.iSense2_raw * -1;
+  //   case 3:
+  //     return status.iSense1_raw;
+  //   case 4:
+  //     return status.iSense1_raw;
+  //   case 5:
+  //     return status.iSense2_raw;
+  // }
+
+	//For single shunt (on shunt 1) hardware version
+	return status.iSense1_raw;
 }
 
 ///////////////////////////////////////////////
@@ -671,14 +696,14 @@ void ftm0_isr(){
   //PHASE_OFF_ISENSE = false;
   if (FTM0_C0SC & FTM_CSC_CHF){     //Do we have a channel 0 match interupt?
     if(commStep == 1 || commStep == 2){
-      PHASE_OFF_ISENSE = true;
-      //digitalWriteFast(LED_PIN, HIGH);
-      adc->startSynchronizedSingleRead(ISENSE2,ISENSE1);
+			/***Commented out next 2 lines for sing shunt resistor hardware version - 7-18-16 ***/
+			//PHASE_OFF_ISENSE = true;
+      //adc->startSynchronizedSingleRead(ISENSE2,ISENSE1);
       FTM0_C0SC &= ~FTM_CSC_CHF;      //clear the flag
       return;                         //then bail
     }
     FTM0_C0SC &= ~FTM_CSC_CHF;      //clear the flag
-  }//else{
+  }
 
   //This read needs to happen in the middle of the PWM active period. I have
   //to introduce a delay of 1/2 the current duty cycle.I can do this
@@ -749,30 +774,39 @@ void adc0_isr(){
   if(adc0Pin == ISENSE2){ //We must be doing the synced phase current read
       syncReadResult = adc->readSynchronizedSingle();
 
-			status.iSense2Update(syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
-			status.iSense1Update(syncReadResult.result_adc1);
+			status.iSense2Update(-syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
+			status.iSense1Update(-syncReadResult.result_adc1); //Need to look into why this is inverted?? 7-18-16
 
-			//test acquisitionBuffer class here
-			scopeCurrent.addSample(status.iSense1_raw);
+			// //test acquisitionBuffer class here
+			// scopeCurrent1.addSample(status.iSense1_raw);
+			// scopeCurrent2.addSample(status.iSense2_raw);
 
-      //If we are doing PWM OFF I sense, we should not fire off the other measurments
-      if(PHASE_OFF_ISENSE){
-        //digitalWriteFast(LED_PIN, LOW);
-        PHASE_OFF_ISENSE = false;
-      }else{
+      //If we are doing PWM OFF I sense, we should not fire off the other measurments [Comented out for single shunt hardware version 7-18-16]
+      // if(PHASE_OFF_ISENSE){
+      //   //digitalWriteFast(LED_PIN, LOW);
+      //   PHASE_OFF_ISENSE = false;
+      // }else{
+
         adc->startSynchronizedSingleRead(bemfPin,VSENSE); //Fire off bus voltage and BEMF readings
-      }
+
+				//test acquisitionBuffer class here
+				scopeCurrent1.addSample(status.iSense1_raw);
+				//scopeCurrent2.addSample(status.iSense2_raw);
+      //}
 
       //Ok, while thats happening maybe we can check the absolute current limits?
       //Is checking every single pulse really necessary? I don't know but i'll do it anyway
 
-      ////////////Removed for troubleshooting 6-12-16///////////////////
-			if((status.iSense1_raw > configData.maxCurrent_motor) || (status.iSense2_raw > configData.maxCurrent_motor)){
+      ////////////Not working right now///////////////////
+			//if((status.iSense1_raw > configData.maxCurrent_motor) || (status.iSense2_raw > configData.maxCurrent_motor)){
+
+			if(status.iSense1_raw > configData.maxCurrent_motor){
         //Oh crap! We have exceded our limit
-        faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
-        controllerState = MC_STATE_FAULT;
-				//interrupts();
-        faultShutdown();
+        // faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
+        // //controllerState = MC_STATE_FAULT;
+				// CrudeDubugFlag = true;
+        // faultShutdown();
+				pwmout.pwmOUTMASK(0x3f); //just try this until I figure out the logic and write some code to transition out of FAULT or COAST states
       }
 			/////////////////////////////////////////////////////////////////
 
@@ -781,7 +815,11 @@ void adc0_isr(){
       //status.vBus_raw = syncReadResult.result_adc1; //Grab the bus voltage and then..
 			status.vBusUpdate(syncReadResult.result_adc1);
 			//status.vBemfUpdate(syncReadResult.result_adc0);
-			status.vBemfUpdate(syncReadResult.result_adc0 - (syncReadResult.result_adc1 / 2)); //Offset reading to be centered on vBus/2
+			status.vBemfUpdate(syncReadResult.result_adc0); //reading is internally offset to be centered on vBus/2
+
+			//Want to see whats happening
+			scopeBusVolts.addSample(syncReadResult.result_adc1);
+			scopeBemfVolts.addSample(status.vBemf_raw);
 
 			//////////////////////////////////////////////////////
 			//!!!I NEED TO DO ZERO-CROSS DETECTION RIGHT HERE!!!
@@ -803,6 +841,8 @@ void adc0_isr(){
 				static unsigned long int lastZeroCrossTime;
 				int bemfReading = status.vBemf_raw;
 
+				//scopeBemfVolts.addSample(bemfReading);
+
 				//Offset reading to be centered on virtual ground (vBus/2). I May want to just do this above when the adc is read
 				//bemfReading = status.vBemf_raw - (status.vBus_raw / 2);
 
@@ -811,15 +851,12 @@ void adc0_isr(){
 					bemfReading = -bemfReading;
 				}
 
+				//scopeBemfVolts.addSample(bemfReading);
+
 				//Check for BEMF zero cross
 				if(bemfReading >= 0){
 					//ZC detected! Do interpolation to figure out actual time of ZC
 					// or, possibly do integration method here if I can figure that out
-
-					//Blinky light for testing
-					if(adc0Pin == ASENSE){
-						digitalWriteFast(LED_PIN, HIGH);
-					}
 
 					//Blinky light for testing
 					if(adc0Pin == ASENSE){
@@ -858,7 +895,9 @@ void adc0_isr(){
         //this needs to do something more sophisticated
         faultStatus |= FAULT_CODE_OVER_VOLTAGE; //OV
 //        controllerState = MC_STATE_FAULT;
-        faultShutdown();
+        //faultShutdown();
+				//bridgeOff();
+				pwmout.pwmOUTMASK(0x3f); //just try this until I figure out the logic and write some code to transition out of FAULT or COAST states
       }
 
   }else if(adc0Pin == THROTTLE){ //Get the throttle and temp reading
@@ -922,7 +961,7 @@ void commutate(){
     //Need to implement
 
   //Running sensorless
-  }else{   //Must be sensorless
+}else if(feedbackMode == FB_MODE_BEMF){   //Must be sensorless
     //Need to implement
 		switch(controllerState){
 			case MC_STATE_DRIVE:
@@ -1148,7 +1187,10 @@ void cmdUnknown(const char *command){
 ////////////////////////////////////////////////
 //Test command
 void cmdTest(){
-	scopeCurrent.trigger();
+	scopeCurrent1.trigger();
+	//scopeCurrent2.trigger();
+	scopeBemfVolts.trigger();
+	scopeBusVolts.trigger();
 
 	//doDc_Cal();
 	// Serial.print(status.iSense1_offset);

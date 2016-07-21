@@ -49,13 +49,13 @@ typedef struct {
   float currentControl_kI;
   float currentControl_kD;
   //Limits
-  uint16_t maxCurrent_HW;    //0-4096
-  uint16_t maxCurrent_motor; //0-4096
-  uint16_t maxCurrent_batt;  //0-4096
-  uint16_t maxCurrent_regen; //0-4096
-  uint16_t maxBusVoltage;    //0-4096
-  uint16_t minBusVoltage;    //0-4096
-  uint16_t maxFetTemp;     	 //degC
+  int maxCurrent_HW;    //0-4096
+  int maxCurrent_motor; //0-4096
+  int maxCurrent_batt;  //0-4096
+  int maxCurrent_regen; //0-4096
+  int maxBusVoltage;    //0-4096
+  int minBusVoltage;    //0-4096
+  int maxFetTemp;     	 //degC
   //Version info
   float configVersion;  //We can check that this matches to see if data has been written before
 } mc_configData;
