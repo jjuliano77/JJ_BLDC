@@ -29,9 +29,6 @@ typedef enum {
 	CONTROL_MODE_DUTY = 0,
 	CONTROL_MODE_SPEED,
 	CONTROL_MODE_CURRENT,
-	CONTROL_MODE_CURRENT_BRAKE, //Not sure we need this?
-	CONTROL_MODE_POS,
-	CONTROL_MODE_NONE
 } mc_control_mode;
 
 //Config data to be stored in EEPROM
@@ -43,7 +40,7 @@ typedef struct {
   uint16_t dutyCycle_min;      //0-4096
   uint16_t polePairs;
   uint16_t pwmOutFreq;         //Hz
-  uint8_t controlMode;
+  mc_control_mode controlMode;
   //PID params
   float currentControl_kP;
   float currentControl_kI;

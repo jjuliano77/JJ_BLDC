@@ -15,18 +15,18 @@
 class BldcStatus{
    public:
       BldcStatus():fetTemp_RA(RUNNING_AVG_BLOCK_SIZE), motorCurrent_RA(RUNNING_AVG_BLOCK_SIZE){}
-      int getPhaseCurrent_Raw();
-      int getFilteredPhaseCurrent_Raw();
-      float getPhaseCurrent_Amps();
-      float getFilteredPhaseCurrent_Amps();
+      int getMotorCurrent_Raw() {return motorCurrent_raw;}
+      int getFilteredMotorCurrent_Raw();
+      float getMotorCurrent();
+      float getFilteredMotorCurrent();
 
       int getBusCurrent_Raw();
       int getFilteredBusCurrent_Raw();
-      float getBusCurrent_Amps();
-      float getFilteredBusCurrent_Amps();
+      float getBusCurrent();
+      float getFilteredBusCurrent();
 
       int getBusVoltage_Raw();
-      //int getVirtGround_Raw();
+      int getFilteredBusVoltage_Raw();
       float getBusVoltage();
       void getBemfVoltage_Raw();
 
@@ -35,7 +35,7 @@ class BldcStatus{
       int getFilteredFetTemp_Raw();
       float getFilteredFetTemp_DegC();
 
-      int getThrottle() {return throttle;};
+      int getThrottle() {return throttle;}
       int getFilteredThrottle();
 
       void setThrottleOffset(int); //Implement these later if needed, just set public members for now
@@ -47,37 +47,43 @@ class BldcStatus{
       //the math exposed for troubleshooting.
       void iSense1Update(int adcVal) {iSense1_raw = adcVal - iSense1_offset;}
       void iSense2Update(int adcVal) {iSense2_raw = adcVal - iSense2_offset;}
+
+      void motorCurrentUpdate(int adcVal) {motorCurrent_raw = adcVal; motorCurrent_RA.addValue(adcVal);}
+
       void vBusUpdate(int adcVal)  {vBus_raw = adcVal;}
       void vBemfUpdate(int adcVal) {vBemf_raw = adcVal - (vBus_raw / 2);}
-      void fetTempUpdate(int adcVal) {fetTemp_raw = adcVal;}
+      void fetTempUpdate(int adcVal) {fetTemp_raw = adcVal; fetTemp_RA.addValue(adcVal);}
       void throttleUpdate(int adcVal) {
         lastThrottle = throttle;
         throttle = adcVal - throttle_offset;
         //I'm pretty sure this could be handled better!!!
-        if(throttle > 4096){
+        if(throttle > ADC_MAX_VALUE){
           throttle = 0; //we must have gone less than 0 and wrapped around
         }
       }
 
       //Public members
-      volatile unsigned int throttle;
-      unsigned int lastThrottle;
       int throttle_offset  = 0;
-
-      volatile int iSense1_raw;
-      volatile int iSense2_raw;
       int iSense1_offset = 0;
       int iSense2_offset = 0;
 
+      volatile int iSense1_raw;
+      volatile int iSense2_raw;
+      volatile int motorCurrent_raw;
       volatile int vBus_raw;
       volatile int vBemf_raw;
       volatile int fetTemp_raw;
+      volatile unsigned int throttle;
+
+      unsigned int lastThrottle;
 
       RunningAverage fetTemp_RA;
       RunningAverage motorCurrent_RA;
 
    private:
      int calcNtcRes(int);
+     float countsToVolts(float counts) {return (counts*3.3)/ADC_MAX_VALUE;}
+     int voltsToCounts(float volts) {return (volts * ADC_MAX_VALUE) / 3.3;}
 
     //  volatile int iSense1_raw;
     //  volatile int iSense2_raw;
@@ -87,9 +93,9 @@ class BldcStatus{
      elapsedMillis ampHrTimer;
     //  RunningAverage fetTemp_RA;
     //  RunningAverage motorCurrent_RA;
-
+     const int   ADC_MAX_VALUE = 4096;
      const float BUS_VOLTAGE_FACTOR = 0.015;  //Counts to bus Volts (voltage divider)
-     const float   SHUNT_CURRENT_FACTOR = 100.0; //Its * 100 because the diff amp already has a gain of 10
+     const float SHUNT_CURRENT_FACTOR = 100.0; //Its * 100 because the diff amp already has a gain of 10
                                               //So - I = (Vshunt * 10) * 100
 
 };

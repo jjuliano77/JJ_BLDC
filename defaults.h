@@ -3,21 +3,23 @@
 
 	Jaimy Juliano
 */
+#define SHUNT_CONFIG         1     //1 = shunt 1, 2 = shunt 2, 3 = both
+//#define DEFAULT_CONTROL_MODE CONTROL_MODE_DUTY     //0 = straight duty cycle control, 1 = speed control, 2 = current control
+#define MAX_THROTTLE_OUTPUT  2760  //This needs to be configurable
+#define MIN_THROTTLE         10    //This needs to be configurable
+#define MAX_MOTOR_RPM        2000  //This needs to be configurable
+#define STOPPED_RPM_THRESH   10    //At what RPM do transition to STOPPED
 
-#define DEFAULT_CONTROL_MODE 0 //0 = straight duty cycle control
-#define MAX_THROTTLE_OUTPUT 2760  //This needs to be configurable
-#define MIN_THROTTLE          10  //This needs to be configurable
-#define MAX_MOTOR_RPM       2000  //This needs to be configurable
-#define STOPPED_RPM_THRESH  10    //At what RPM do transition to STOPPED
-
-#define DEFAULT_CURRENT_KP	50			//Default value for PID loop kP
+#define DEFAULT_CURRENT_KP	 5			//Default value for PID loop kP
 #define DEFAULT_CURRENT_KI 	 0			//Default value for PID loop kI
 #define DEFAULT_CURRENT_KD	 0			//Default value for PID loop kD
 
 #define  MIN_DUTY  0.05           //5%
 #define  MAX_DUTY  0.95           //95%
-#define  MIN_DUTY_COUNTS  200  //This isn't working for some reason -> (2 ^ PWM_OUT_RESOLUTION) * MIN_DUTY //This might come in handy
-#define  MAX_DUTY_COUNTS  4000 //This isn't working for some reason -> (2 ^ PWM_OUT_RESOLUTION) * MAX_DUTY //This might come in handy
+#define  MIN_DUTY_COUNTS  (int) 4096 * MIN_DUTY
+#define  MAX_DUTY_COUNTS  (int) 4096 * MAX_DUTY
+
+#define  FET_RDS 0.00115   //1.15 mOhms for IRFS7530
 
 //******************
 // Limits
@@ -27,7 +29,7 @@
 // scailing factors defined for each and be able to tweak them later if necessary
 #define MOTOR_OC_LIMIT    110    //default motor overcurrent limit (Amps)
 #define BATT_OC_LIMIT     60     //default battery current limit (Amps) !Actually not sure about this one because its caclulated by multiplying phase current by % duty
-#define DRV_OC_LIMIT      100    //default HW (DRV8302) overcurrent limit in Amps
+#define DRV_OC_LIMIT      180    //default HW (DRV8302) overcurrent limit in Amps
 #define REGEN_OC_LIMIT	  20	   //default regen current limit in Amps
 #define BUS_OV_LIMIT      48     //software over voltage limit (Volts)
 #define BUS_UV_LIMIT      10	   //software under voltage limit (Volts)
@@ -45,5 +47,5 @@
 //Timing config values
 #define PWMFREQ 10000            //PWM frequency in hz. This should be a configurable parameter eventually
 //#define PWM_PERIOD 1000000 * (1 / PWMFREQ)
-#define SERIAL_OUT_PERIOD 10    //mS
+#define SERIAL_OUT_PERIOD 100    //mS
 #define CONTROL_LOOP_PERIOD 1000 //uS

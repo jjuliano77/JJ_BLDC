@@ -6,20 +6,46 @@
 #include "bldcStatus.h"
 
 
-int BldcStatus::getPhaseCurrent_Raw(void){
+// int BldcStatus::getMotorCurrent_Raw(void){
+//   //Get measurment depending on what commutation step we are currently in
+// 	//This needs to be fixed !!
+// 	//For single shunt (on shunt 1) hardware version
+// 	// if(SHUNT_CONFIG == 1){
+// 	// 	return iSense1_raw;
+// 	// }else if (SHUNT_CONFIG == 2){
+// 	// 	return iSense2_raw;
+// 	// }else{ //Assume duel shunts
+// 		// switch(commStep){
+// 	  //   case 0:
+// 	  //     return iSense2_raw;
+// 	  //   case 1:
+// 		// 		//No shunt on PWM active here, I'm sampling current on
+// 		// 		//the inactive side here
+// 	  //     return iSense1_raw * -1;
+// 	  //   case 2:
+// 		// 		//No shunt on PWM active here, I'm sampling current on
+// 		// 		//the inactive side here
+// 	  //     return iSense2_raw * -1;
+// 	  //   case 3:
+// 	  //     return iSense1_raw;
+// 	  //   case 4:
+// 	  //     return iSense1_raw;
+// 	  //   case 5:
+// 	  //     return iSense2_raw;
+// 	  // }
+// 	//}
+// }
+
+int BldcStatus::getFilteredMotorCurrent_Raw(void){
   return 0;
 }
 
-int BldcStatus::getFilteredPhaseCurrent_Raw(void){
-  return 0;
+float BldcStatus::getMotorCurrent(void){
+  return (float) countsToVolts(motorCurrent_raw) * SHUNT_CURRENT_FACTOR;
 }
 
-float BldcStatus::getPhaseCurrent_Amps(void){
-  return 0.0;
-}
-
-float BldcStatus::getFilteredPhaseCurrent_Amps(void){
-  return 0.0;
+float BldcStatus::getFilteredMotorCurrent(void){
+  return countsToVolts(motorCurrent_RA.getAverage()) * SHUNT_CURRENT_FACTOR;
 }
 
 float BldcStatus::getBusVoltage(void){

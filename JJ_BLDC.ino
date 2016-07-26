@@ -156,7 +156,7 @@ double lastDutyCycle;
 mc_state controllerState;
 mc_state lastControllerState;
 
-mc_control_mode controlMode;
+//mc_control_mode controlMode;
 //mc_fault_code faultCode;
 mc_fb_mode feedbackMode;
 //mc_faultStatus faultStatus; //new struct to hold faults
@@ -206,11 +206,11 @@ static void FTM0_INT_ENABLE(void)  { FTM0_SC |= FTM_SC_TOIE; FTM0_C0SC |= FTM_CS
 static void FTM0_INT_DISABLE(void) { NVIC_ENABLE_IRQ(IRQ_FTM0); }
 
 static float countsToVolts(float counts) {return (counts*3.3)/adc->getMaxValue();}
-static int voltsToCounts(float volts) {return (volts * adc->getMaxValue()) / 3.3;} // THIS DOESNT WORK!!
+static int voltsToCounts(float volts) {return (volts * adc->getMaxValue()) / 3.3;}
 //static int voltsToCounts(float volts) {return (int)(volts * 4096) / 3.3;} // THIS DOESNT WORK!!
 
-static int countsTo_mV(int counts) {return ((counts*3300)/(int)adc->getMaxValue());}        //reduce need for FP
-static int mvToCounts(int mv) {return ((mv*(int)adc->getMaxValue())/3.3);}
+// static int countsTo_mV(int counts) {return ((counts*3300)/(int)adc->getMaxValue());}        //reduce need for FP
+// static int mvToCounts(int mv) {return ((mv*(int)adc->getMaxValue())/3.3);}
 
 unsigned int eeAddress = 0; // Starting EEPROM address
 
@@ -223,28 +223,55 @@ void setup() {
   pinMode(HALL2, INPUT);
   pinMode(HALL3, INPUT);
 
+	attachInterrupt(HALL1, hall_isr, CHANGE);
+	attachInterrupt(HALL2, hall_isr, CHANGE);
+	attachInterrupt(HALL3, hall_isr, CHANGE);
+
   //pinMode(THROTTLE, INPUT);
 
   pinMode(PWRGD_IN, INPUT_PULLUP); // Buck converter OK
   pinMode(FAULT_IN, INPUT_PULLUP); // Fault indicator
   pinMode(OCTW_IN, INPUT_PULLUP);  // Over current or over temp. DOUBLE CHECK THIS CONNECTION!
 
+	//attachInterrupt(FAULT_IN, drvfault_isr, FALLING);
+	//attachInterrupt(OCTW_IN, octw_isr, FALLING);
+
   pinMode(REV_SW, INPUT_PULLUP);   // Reverse switch input
 
-  //analogWriteResolution(12);
+  analogWriteResolution(12); //Set the PWM resolution to 12 bit
 
-  Serial.begin(115200);
+  Serial.begin(115200); //USB Serial
+	Serial1.begin(9600);  //BT Serial
   //delay(1000);
   startupBlink();
 
-  //Setup serial command callbacks
+  /****Setup serial command callbacks****/
+	//Control commands
   sCmd.addCommand("v", cmdGetVersion);      //Report the firmware version
   sCmd.addCommand("s", cmdStream);          //Start/Stop streaming out readings
 	sCmd.addCommand("r", cmdRate);						//Update rate for streaming
   sCmd.addCommand("conf", cmdPrintConfig);  //Print out the config struct data
   sCmd.addCommand("save", cmdSaveConfig);   //Save current config to EEPROM
-  sCmd.addCommand("tmax", cmdThrotMax);     //Test setting throttle max
 	sCmd.addCommand("test", cmdTest);         //Use this for testing stuff
+	//sCmd.addCommand("bt", cmdBluetoothEnable);//Start/Stop bluetooth (serial1) output
+	//Settings
+	sCmd.addCommand("tmax", cmdThrottleMax);         //get or set throttle max
+	sCmd.addCommand("tmin", cmdThrottleMin);			   //get or set throttle min
+  // sCmd.addCommand("dutymax", cmdDutyCycMax);
+	// sCmd.addCommand("dutymin", cmdDutyCycMax);
+	// sCmd.addCommand("polePairs", cmdPolePairs);
+	// sCmd.addCommand("pwmfreq", cmdPwmFrequency);
+	sCmd.addCommand("cntrlmode",cmdControlMode);     //get or set control mode (require reboot, or only apply when throttle is 0?)
+	sCmd.addCommand("kp", cmdCurrentkP);
+	//sCmd.addCommand("ki", cmdCurrentkI);
+	// sCmd.addCommand("kd", cmdCurrentkD);
+  sCmd.addCommand("mcmax", cmdMotorCurrentMax);    //get or set maximum phase current
+	//sCmd.addCommand("bcmax", cmdBusCurrentMax);    	 //get or set maximum bus current
+	sCmd.addCommand("hwclimit", cmdHwCurrentLimit); //get or set the hardware over current protection limit
+	// sCmd.addCommand("ovlimit", cmdOverVoltageLimit); //get or set over voltage limit level
+	// sCmd.addCommand("uvlimit", cmdUnderVoltageLimit);//get or set under voltage limit
+  sCmd.addCommand("ftmax", cmdFetTempMax);         //get or set the maximum FET Temperature (I might make a warning at 90% of max)
+
   sCmd.setDefaultHandler(cmdUnknown);       //Handler for unrecognized command
 
   status.fetTemp_RA.clear();
@@ -262,11 +289,8 @@ void setup() {
 
 	loadConfig();  //Load configuration from EEPROM
 
-  //the [ * 20 ] is just a fudge factor
-  //need to figure out real scaling still
-  //analogWrite(HW_OC_ADJ, configData.maxCurrent_HW * 20); //rough guess at 40A,(60 = 0.48V) WRONG!! I'll figure it out later
-                                             // From datasheet -> Ioc = Vds/Rds
-  analogWrite(HW_OC_ADJ, 256); //Just DAC counts for testing 1000 should be around 80Amps THIS DOESNT WORK AS EXPECTED - NEED TO FIGURE OUT
+  //analogWrite(HW_OC_ADJ, configData.maxCurrent_HW); //Lets try this again  [From datasheet -> Ioc = Vds/Rds]
+  analogWrite(HW_OC_ADJ, 4096);
 
   //Wake up the gate driver
   pinMode(EN_GATE, OUTPUT);
@@ -288,9 +312,9 @@ void setup() {
   //faultCode = FAULT_CODE_NONE;    //The whole fault code thing needs to be done better
 
   //**********Initial control mode**********
-  controlMode = CONTROL_MODE_DUTY;
+  //configData.controlMode = CONTROL_MODE_DUTY;
   //controlMode = CONTROL_MODE_SPEED;
-  //controlMode = CONTROL_MODE_CURRENT;
+  //configData.controlMode = CONTROL_MODE_CURRENT;
   feedbackMode = FB_MODE_HALL;
   //feedbackMode = FB_MODE_BEMF;
 
@@ -327,36 +351,41 @@ void setup() {
 }
 
 void loop() {
- //Do something useful
- //I think we might end up just doing serial communications here
+	//Do something useful
+	//I think we might end up just doing serial communications here
 
- sCmd.readSerial();
+	sCmd.readSerial();
 
- //Send status info out
- if(serialStreamFlag == true){
-   if(outputTimer > serialUpdatePeriod){
-     outputStats();
-     outputTimer = 0;
-   }
- }else if(scopeCurrent1.samplesReady() /*&& scopeCurrent2.samplesReady()*/
-		  && scopeBemfVolts.samplesReady() && scopeBusVolts.samplesReady()){
-	 //This is just to test the acquisitionBuffer class
-	 //obviosly need something better later
+	//TO DO - Do UART (bluetooth) seperatly
+	//outputStatsBT();
 
-	 for(int i=0; i < scopeCurrent1.bufferSize();i++){
-		 Serial.print(scopeCurrent1.getSample(i));
-		 Serial.print("\t");
-		//  Serial.print(scopeCurrent2.getSample(i));
-		//  Serial.print("\t");
-		 Serial.print(scopeBemfVolts.getSample(i));
-		 Serial.print("\t");
-		 Serial.println(scopeBusVolts.getSample(i));
-	 }
-	 scopeCurrent1.arm(); //re-arm
-	 //scopeCurrent2.arm();
-	 scopeBemfVolts.arm();
-	 scopeBusVolts.arm();
- }
+	//Do usb serial
+	//if(serialStreamFlag == true){
+		if(outputTimer > serialUpdatePeriod){
+			if(serialStreamFlag == true) outputStats();
+			outputStatsBT();
+			outputTimer = 0;
+		}
+	//}else
+	if(scopeCurrent1.samplesReady() /*&& scopeCurrent2.samplesReady()*/
+	&& scopeBemfVolts.samplesReady() && scopeBusVolts.samplesReady()){
+		//This is just to test the acquisitionBuffer class
+		//obviosly need something better later
+
+		for(int i=0; i < scopeCurrent1.bufferSize();i++){
+			Serial.print(scopeCurrent1.getSample(i));
+			Serial.print("\t");
+			//  Serial.print(scopeCurrent2.getSample(i));
+			//  Serial.print("\t");
+			Serial.print(scopeBemfVolts.getSample(i));
+			Serial.print("\t");
+			Serial.println(scopeBusVolts.getSample(i));
+		}
+		scopeCurrent1.arm(); //re-arm
+		//scopeCurrent2.arm();
+		scopeBemfVolts.arm();
+		scopeBusVolts.arm();
+	}
 
 }
 
@@ -371,9 +400,9 @@ void controlLoop(){
 
   checkDrv8302Faults(); //Not sure if this should be done here, or somewhere else
 
-  motorCurrent = getMotorCurrent(); //I think we need to call this first to update the current
+  motorCurrent = status.getMotorCurrent(); //I think we need to call this first to update the current
   //motorCurrent_Avg = fabs(motorCurrent_RA.getAverage()); // * dutyCycleFloat);
-  motorCurrent_Avg = status.motorCurrent_RA.getAverage();
+  motorCurrent_Avg = status.getFilteredMotorCurrent();
 
   //****************************************
   //Start of different state idea
@@ -425,7 +454,7 @@ void controlLoop(){
       }
 
       //Check if we are over minumum allowed duty cycle
-      if(tmpDuty < 200){ //configData.dutyCycle_min){
+      if(tmpDuty < MIN_DUTY){ //configData.dutyCycle_min){
         tmpDuty = 0;
       }
 
@@ -466,13 +495,13 @@ void loadConfig(){
     configData.dutyCycle_min = MIN_DUTY_COUNTS; //used
     configData.polePairs = POLE_PAIRS; //used
     configData.pwmOutFreq = PWMFREQ; //This is currently set when we creat the PWM object, need to set after we load the config
-    configData.controlMode = DEFAULT_CONTROL_MODE; //Not used yet
+    configData.controlMode = CONTROL_MODE_DUTY; //used, default to direct duty cycle control
 
     configData.currentControl_kP = DEFAULT_CURRENT_KP; //Not used yet
     configData.currentControl_kI = DEFAULT_CURRENT_KI; //Not used yet
     configData.currentControl_kD = DEFAULT_CURRENT_KD; //Not used yet
 
-    configData.maxCurrent_HW = voltsToCounts(DRV_OC_LIMIT / SHUNT_CURRENT_FACTOR);
+    configData.maxCurrent_HW = voltsToCounts(DRV_OC_LIMIT * FET_RDS);
     configData.maxCurrent_motor = voltsToCounts(MOTOR_OC_LIMIT / SHUNT_CURRENT_FACTOR); //used
     configData.maxCurrent_batt = voltsToCounts(BATT_OC_LIMIT / SHUNT_CURRENT_FACTOR); //Not used yet
     configData.maxCurrent_regen = voltsToCounts(REGEN_OC_LIMIT / SHUNT_CURRENT_FACTOR);
@@ -521,7 +550,7 @@ void checkDrv8302Faults(){
 int calcDutyCycle(){
   int duty;
 
-  switch(controlMode){
+  switch(configData.controlMode){
     case CONTROL_MODE_SPEED:
 //      motorRPM = getRPM();
 //      //This is not fully implemented yet! In fact, I don't know if I will bother with this
@@ -532,7 +561,7 @@ int calcDutyCycle(){
       break;
     case CONTROL_MODE_CURRENT:
       //Map throttle to current range.Probably need to do this mapping better!!
-      motorCurrentSetpoint = map(status.getThrottle(),0,configData.throttleOut_max,0,configData.maxCurrent_motor); //*11-29 NEEDS TO REFLECT CHANGE TO mA
+      motorCurrentSetpoint = map(status.getThrottle(),0,configData.throttleOut_max,0,configData.maxCurrent_motor);
       //motorCurrentSetpoint = throttle; //lets try this real quick
       currentPID.Compute();
       duty = motorCurrentDuty;
@@ -551,14 +580,14 @@ int calcDutyCycle(){
 void outputStats(){
   Serial.print(status.getBusVoltage());
   Serial.print('\t');
-	Serial.print(configData.maxBusVoltage);
-	Serial.print('\t');
-  Serial.print(status.iSense1_raw);
-  Serial.print('\t');
+	// Serial.print(MAX_DUTY_COUNTS);
+	// Serial.print('\t');
+  // Serial.print(status.iSense2_raw);
+  // Serial.print('\t');
   Serial.print(motorCurrent_Avg);
   Serial.print('\t');
-  Serial.print(configData.maxCurrent_motor);
-  Serial.print('\t');
+  // Serial.print(configData.maxCurrent_motor);
+  // Serial.print('\t');
   //Serial.print(motorCurrentDuty);
   // Serial.print(CrudeDubugFlag);
   // Serial.print('\t');
@@ -596,6 +625,27 @@ void outputStats(){
  	Serial.print('\t');
  	Serial.println(commStep);
 }
+
+//Testing output on TX1 through Bluetooth
+void outputStatsBT(){
+
+  Serial1.print("*T");
+	Serial1.print(NTC_CONVERT_TEMP(status.fetTemp_RA.getAverage()),2);
+  Serial1.print('*');
+
+	Serial1.print('M');
+	Serial1.print(tachometer.getMPH(),2); //replace with rpm later
+  Serial1.print('*');
+
+	Serial1.print('V');
+  Serial1.print(status.getBusVoltage());
+	Serial1.print('*');
+
+	Serial1.print('C');
+  Serial1.print(motorCurrent_Avg);
+	Serial1.println('*');
+
+}
 ////////////////////////////////////////////////////////////
 //Silly hard coded startup blink. Blinks out version
 void startupBlink(void){
@@ -607,60 +657,11 @@ void startupBlink(void){
   }
 }
 
-////////////////////////////////////////////////////////
-// Get Motor Current in Amps From The Appropriate Shunt
-float getMotorCurrent(){
-
-	return (float) countsToVolts(getMotorCurrent_Raw()) * SHUNT_CURRENT_FACTOR;
-
-}
-
-/////////////////////////////////////////////////////
-// Get Motor current in mA to reduce need for FP
-int getMotorCurrent_mA(){
-
-  return (int) countsTo_mV(getMotorCurrent_Raw()) * SHUNT_CURRENT_FACTOR;
-
-}
-
-int getMotorCurrent_Raw(){
-	//Get measurment depending on what commutation step we are currently in
-	//This needs to be fixed !!
-
-	// switch(commStep){
-  //   case 0:
-  //     return status.iSense2_raw;
-  //   case 1:
-	// 		//No shunt on PWM active here, I'm sampling current on
-	// 		//the inactive side here
-  //     return status.iSense1_raw * -1;
-  //   case 2:
-	// 		//No shunt on PWM active here, I'm sampling current on
-	// 		//the inactive side here
-  //     return status.iSense2_raw * -1;
-  //   case 3:
-  //     return status.iSense1_raw;
-  //   case 4:
-  //     return status.iSense1_raw;
-  //   case 5:
-  //     return status.iSense2_raw;
-  // }
-
-	//For single shunt (on shunt 1) hardware version
-	return status.iSense1_raw;
-}
-
 ///////////////////////////////////////////////
 // Calculate Battery Current in Amps
 float getBatteryCurrent(){
   //return getMotorCurrent() * (float)(dutyCycle / 2 ^ PWM_OUT_RESOLUTION);
-  return getMotorCurrent() * dutyCycleFloat;
-}
-
-///////////////////////////////////////////////
-// Calculate Battery Current in mA
-int getBatteryCurrent_mA(){
-  return (int)getMotorCurrent_mA() * dutyCycleFloat; //this is still FP for now. I got bigger fish to fry
+  return status.getMotorCurrent() * dutyCycleFloat;
 }
 
 ////////////////////////////////////////////////
@@ -763,6 +764,17 @@ void pdb_isr(void){
 
 }
 
+//////////////////////////////////////////////////////////////////////
+// OCTW ISR - Catch when the hardware overcurrent (or over temp) occurs
+void octw_isr(void){
+	digitalWriteFast(LED_PIN, HIGH); //testing
+}
+
+//////////////////////////////////////////////////////////////////////
+// Hall sensor ISR - Trigger comutation on hall sensor change
+void hall_isr(void){
+	commutate(); //COMPLETELY UNTESTED!!
+}
 ///////////////////////////////////////////////////////
 // ADC ISR - A Whole Lot of Stuff Happens Here
 void adc0_isr(){
@@ -775,7 +787,15 @@ void adc0_isr(){
       syncReadResult = adc->readSynchronizedSingle();
 
 			status.iSense2Update(-syncReadResult.result_adc0);  //iSense2 must be read by ADC_0!!! A11 can't do SE on ADC_1
-			status.iSense1Update(-syncReadResult.result_adc1); //Need to look into why this is inverted?? 7-18-16
+			//status.iSense1Update(-syncReadResult.result_adc1); //Need to look into why this is inverted?? 7-18-16
+
+			if(SHUNT_CONFIG == 1){
+				status.motorCurrentUpdate(-syncReadResult.result_adc1 - status.iSense1_offset);
+			}else if (SHUNT_CONFIG == 2){
+				status.motorCurrentUpdate(-syncReadResult.result_adc0 - status.iSense2_offset);
+			}else{
+				//Do duel shunt code here if I ever go back
+			}
 
 			// //test acquisitionBuffer class here
 			// scopeCurrent1.addSample(status.iSense1_raw);
@@ -790,7 +810,8 @@ void adc0_isr(){
         adc->startSynchronizedSingleRead(bemfPin,VSENSE); //Fire off bus voltage and BEMF readings
 
 				//test acquisitionBuffer class here
-				scopeCurrent1.addSample(status.iSense1_raw);
+				//scopeCurrent1.addSample(status.iSense1_raw);
+				scopeCurrent1.addSample(status.getMotorCurrent_Raw());
 				//scopeCurrent2.addSample(status.iSense2_raw);
       //}
 
@@ -800,7 +821,7 @@ void adc0_isr(){
       ////////////Not working right now///////////////////
 			//if((status.iSense1_raw > configData.maxCurrent_motor) || (status.iSense2_raw > configData.maxCurrent_motor)){
 
-			if(status.iSense1_raw > configData.maxCurrent_motor){
+			if(status.getMotorCurrent_Raw() > configData.maxCurrent_motor){
         //Oh crap! We have exceded our limit
         // faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
         // //controllerState = MC_STATE_FAULT;
@@ -859,11 +880,11 @@ void adc0_isr(){
 					// or, possibly do integration method here if I can figure that out
 
 					//Blinky light for testing
-					if(adc0Pin == ASENSE){
-						digitalWriteFast(LED_PIN, HIGH);
-					}else if (adc0Pin == BSENSE || adc0Pin == CSENSE){
-						digitalWriteFast(LED_PIN, LOW);
-					}
+					// if(adc0Pin == ASENSE){
+					// 	digitalWriteFast(LED_PIN, HIGH);
+					// }else if (adc0Pin == BSENSE || adc0Pin == CSENSE){
+					// 	digitalWriteFast(LED_PIN, LOW);
+					// }
 
 					/*   BEMF Integration?  */
 
@@ -897,7 +918,7 @@ void adc0_isr(){
 //        controllerState = MC_STATE_FAULT;
         //faultShutdown();
 				//bridgeOff();
-				pwmout.pwmOUTMASK(0x3f); //just try this until I figure out the logic and write some code to transition out of FAULT or COAST states
+				pwmout.pwmOUTMASK(0x3f); //just try turn off the bridge until I figure out the logic and write some code to transition out of FAULT or COAST states
       }
 
   }else if(adc0Pin == THROTTLE){ //Get the throttle and temp reading
@@ -913,8 +934,8 @@ void adc0_isr(){
   }
 
   //Lets update running avereges now that we are done
-  status.motorCurrent_RA.addValue(getMotorCurrent());
-	status.fetTemp_RA.addValue(status.fetTemp_raw);
+  //status.motorCurrent_RA.addValue(status.getMotorCurrent());
+	//status.fetTemp_RA.addValue(status.fetTemp_raw);
 
 }
 
@@ -1160,13 +1181,123 @@ void cmdPrintConfig(void){
 //  Serial.println(configData.configVersion);
 }
 
-void cmdThrotMax(){
-  char *arg;
-  arg = sCmd.next();
-  if(arg != NULL){
-    configData.throttleOut_max = atoi(arg); //Probably need some validation here
+///////////////////////////////////////////////////////////////////////////////
+//set or get the throttle control mode
+void cmdControlMode(){
+	char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								//see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								//see if we are writing a value...
+			mc_control_mode mode = (mc_control_mode) atoi(arg2);
+			if(mode >= CONTROL_MODE_DUTY && mode <= CONTROL_MODE_CURRENT){
+				configData.controlMode = mode; 				   			//Probably need some validation here
+			}
+		}else if(arg1[0] == 'r'){ //											//or reading  a value
+			Serial.println(configData.controlMode);
+		}
   }else{
-    Serial.println("Did you forget somthing?");
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Set or get kP for current control loop
+void cmdCurrentkP(){
+	char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								//see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								//see if we are writing a value...
+			configData.currentControl_kP = atof(arg2); 			//Probably need some validation here
+		}else if(arg1[0] == 'r'){ //											//or reading  a value
+			Serial.println(configData.currentControl_kP);
+		}
+  }else{
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Get or set Max motor current
+void cmdMotorCurrentMax(){
+	char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								//see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								//see if we are writing a value...
+			configData.maxCurrent_motor = voltsToCounts(atoi(arg2) / SHUNT_CURRENT_FACTOR); //Probably need some validation here
+		}else if(arg1[0] == 'r'){ //											//or reading  a value
+			Serial.println(countsToVolts(configData.maxCurrent_motor) * SHUNT_CURRENT_FACTOR);
+		}
+  }else{
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Get or set min DRV8302 hardware current limit
+void cmdHwCurrentLimit(){
+	char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								 //see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								 //see if we are writing a value...
+			configData.maxCurrent_HW = voltsToCounts(atof(arg2) * FET_RDS); //Probably need some validation here
+			analogWrite(HW_OC_ADJ, configData.maxCurrent_HW);// for right now. should probably update this somewhere else
+		}else if(arg1[0] == 'r'){ //											 //or reading  a value
+			Serial.println(countsToVolts(configData.maxCurrent_HW)/FET_RDS);
+		}
+  }else{
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
+  }
+}
+
+void cmdFetTempMax(){
+	char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								//see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								//see if we are writing a value...
+			configData.maxFetTemp = atof(arg2); 				//Probably need some validation here
+		}else if(arg1[0] == 'r'){ //											//or reading  a value
+			Serial.println(configData.maxFetTemp);
+		}
+  }else{
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
+  }
+}
+////////////////////////////////////////////////
+// Set or get the min throttle input
+void cmdThrottleMin(){
+	char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								//see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								//see if we are writing a value...
+			configData.throttleOut_min = atoi(arg2); 				//Probably need some validation here
+		}else if(arg1[0] == 'r'){ //											//or reading  a value
+			Serial.println(configData.throttleOut_min);
+		}
+  }else{
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
+  }
+}
+
+////////////////////////////////////////////////
+// Set or get the max throttle input
+void cmdThrottleMax(){
+  char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								//see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								//see if we are writing a value...
+			configData.throttleOut_max = atoi(arg2); 				//Probably need some validation here
+		}else if(arg1[0] == 'r'){ //											//or reading  a value
+			Serial.println(configData.throttleOut_max);
+		}
+  }else{
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
   }
 }
 
@@ -1179,6 +1310,10 @@ void cmdRate(){
     Serial.println("Did you forget somthing?");
   }
 }
+
+///////////////////////////////////////////////
+//
+
 ///////////////////////////////////////////////
 //Handle an unknown command
 void cmdUnknown(const char *command){
