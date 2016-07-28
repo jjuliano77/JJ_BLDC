@@ -257,7 +257,7 @@ void setup() {
 	//Settings
 	sCmd.addCommand("tmax", cmdThrottleMax);         //get or set throttle max
 	sCmd.addCommand("tmin", cmdThrottleMin);			   //get or set throttle min
-  // sCmd.addCommand("dutymax", cmdDutyCycMax);
+  sCmd.addCommand("dutymax", cmdDutyCycMax);
 	// sCmd.addCommand("dutymin", cmdDutyCycMax);
 	// sCmd.addCommand("polePairs", cmdPolePairs);
 	// sCmd.addCommand("pwmfreq", cmdPwmFrequency);
@@ -599,8 +599,8 @@ void outputStats(){
   Serial.print('\t');
   // Serial.print(motorCurrent_Avg * dutyCycleFloat); //This should be average battery current
   // Serial.print('\t');
-  // Serial.print(dutyCycleFloat,2);
-  // Serial.print('\t');
+  Serial.print(dutyCycle);
+  Serial.print('\t');
   Serial.print(NTC_CONVERT_TEMP(status.fetTemp_RA.getAverage()));
   Serial.print('\t');
   // Serial.print(tachometer.getTimeSinceCommutation());
@@ -1295,6 +1295,22 @@ void cmdThrottleMax(){
 			configData.throttleOut_max = atoi(arg2); 				//Probably need some validation here
 		}else if(arg1[0] == 'r'){ //											//or reading  a value
 			Serial.println(configData.throttleOut_max);
+		}
+  }else{
+    Serial.println("Did you forget somthing?");		//let user know they screwed somthing up
+  }
+}
+
+////////////////////////////////////////////////
+void cmdDutyCycMax(){
+  char *arg1 = sCmd.next();
+	char *arg2 = sCmd.next();
+
+  if(arg1 != NULL){// && arg2 != NULL){								//see if we got the arguments
+		if(arg1[0] == 'w' && arg2 != NULL){								//see if we are writing a value...
+			configData.dutyCycle_max = atoi(arg2); 				//Probably need some validation here
+		}else if(arg1[0] == 'r'){ //											//or reading  a value
+			Serial.println(configData.dutyCycle_max);
 		}
   }else{
     Serial.println("Did you forget somthing?");		//let user know they screwed somthing up

@@ -15,7 +15,7 @@
 #define DEFAULT_CURRENT_KD	 0			//Default value for PID loop kD
 
 #define  MIN_DUTY  0.05           //5%
-#define  MAX_DUTY  0.95           //95%
+#define  MAX_DUTY  0.98           //95%
 #define  MIN_DUTY_COUNTS  (int) 4096 * MIN_DUTY
 #define  MAX_DUTY_COUNTS  (int) 4096 * MAX_DUTY
 
@@ -27,7 +27,7 @@
 // but convert to raw counts when initializing the config data structure. This way
 // it will be easier to read, but won't matter "under the hood". Also, I can have
 // scailing factors defined for each and be able to tweak them later if necessary
-#define MOTOR_OC_LIMIT    110    //default motor overcurrent limit (Amps)
+#define MOTOR_OC_LIMIT    150    //default motor overcurrent limit (Amps)
 #define BATT_OC_LIMIT     60     //default battery current limit (Amps) !Actually not sure about this one because its caclulated by multiplying phase current by % duty
 #define DRV_OC_LIMIT      180    //default HW (DRV8302) overcurrent limit in Amps
 #define REGEN_OC_LIMIT	  20	   //default regen current limit in Amps
