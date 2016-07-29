@@ -46,7 +46,8 @@ typedef struct {
   float currentControl_kI;
   float currentControl_kD;
   //Limits
-  int maxCurrent_HW;    //0-4096
+  int drvOcLimit;       //0-4096
+  int motorOcLimit;     //0-4096
   int maxCurrent_motor; //0-4096
   int maxCurrent_batt;  //0-4096
   int maxCurrent_regen; //0-4096

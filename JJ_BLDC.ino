@@ -10,8 +10,8 @@
 #include <SerialCommand.h>
 #include <EEPROM.h>
 
-#define JJBLDC_FW_VERSION 0.65
-#define JJBLDC_CONFIG_VERSION 1.01
+#define JJBLDC_FW_VERSION 0.7
+#define JJBLDC_CONFIG_VERSION 1.02
 #define JJBLDC_HW_VERSION 0.2
 
 //**********************
@@ -125,7 +125,7 @@ elapsedMillis outputTimer;
 unsigned long prevTime = 0;
 
 //Flags
-boolean motorDirection = DIR_FORWARD;
+//boolean motorDirection = DIR_FORWARD;
 //boolean motorDirection = DIR_REVERSE;
 boolean PHASE_OFF_ISENSE;
 
@@ -141,9 +141,9 @@ boolean drv_octw;
 uint16_t faultStatus = 0;   // | drv_pwrGood | drv_fault | drv_octw
                            // |      0      |     0     |     0
 
-double motorCurrent = 0;
+//double motorCurrent = 0;
 double motorCurrent_Avg = 0;
-double motorCurrent_mA = 0; //was int, changed to double for troubleshooting -didn't do anything
+//double motorCurrent_mA = 0; //was int, changed to double for troubleshooting -didn't do anything
 double motorCurrentDuty = 0;
 double motorCurrentSetpoint = 0;
 double motorRPM = 0;
@@ -163,8 +163,8 @@ mc_fb_mode feedbackMode;
 mc_configData configData;
 //mc_limits limitValues;
 
-RunningAverage fetTemp_RA(RUNNING_AVG_BLOCK_SIZE);
-RunningAverage motorCurrent_RA(RUNNING_AVG_BLOCK_SIZE);
+//RunningAverage fetTemp_RA(RUNNING_AVG_BLOCK_SIZE);
+//RunningAverage motorCurrent_RA(RUNNING_AVG_BLOCK_SIZE);
 //RunningAverage motorCurrent_mA_RA(RUNNING_AVG_BLOCK_SIZE);
 
 ADC *adc = new ADC();    //adc object
@@ -289,7 +289,7 @@ void setup() {
 
 	loadConfig();  //Load configuration from EEPROM
 
-  //analogWrite(HW_OC_ADJ, configData.maxCurrent_HW); //Lets try this again  [From datasheet -> Ioc = Vds/Rds]
+  //analogWrite(HW_OC_ADJ, configData.drvOcLimit); //Lets try this again  [From datasheet -> Ioc = Vds/Rds]
   analogWrite(HW_OC_ADJ, 4096);
 
   //Wake up the gate driver
@@ -400,7 +400,7 @@ void controlLoop(){
 
   checkDrv8302Faults(); //Not sure if this should be done here, or somewhere else
 
-  motorCurrent = status.getMotorCurrent(); //I think we need to call this first to update the current
+  //motorCurrent = status.getMotorCurrent(); //I think we need to call this first to update the current
   //motorCurrent_Avg = fabs(motorCurrent_RA.getAverage()); // * dutyCycleFloat);
   motorCurrent_Avg = status.getFilteredMotorCurrent();
 
@@ -422,9 +422,9 @@ void controlLoop(){
 
       //check reverse switch here
       if(digitalReadFast(REV_SW)){
-        motorDirection = DIR_REVERSE;
+        status.motorDirection = DIR_REVERSE;
       }else{
-        motorDirection = DIR_FORWARD;
+        status.motorDirection = DIR_FORWARD;
       }
       //check for throttle input
       if(status.getThrottle() >= configData.throttleOut_min){
@@ -501,8 +501,9 @@ void loadConfig(){
     configData.currentControl_kI = DEFAULT_CURRENT_KI; //Not used yet
     configData.currentControl_kD = DEFAULT_CURRENT_KD; //Not used yet
 
-    configData.maxCurrent_HW = voltsToCounts(DRV_OC_LIMIT * FET_RDS);
-    configData.maxCurrent_motor = voltsToCounts(MOTOR_OC_LIMIT / SHUNT_CURRENT_FACTOR); //used
+    configData.drvOcLimit = voltsToCounts(DRV_OC_LIMIT * FET_RDS);
+		configData.motorOcLimit = voltsToCounts(MOTOR_OC_LIMIT / SHUNT_CURRENT_FACTOR); //used
+    configData.maxCurrent_motor = voltsToCounts(MAX_MOTOR_CURRENT / SHUNT_CURRENT_FACTOR); //used
     configData.maxCurrent_batt = voltsToCounts(BATT_OC_LIMIT / SHUNT_CURRENT_FACTOR); //Not used yet
     configData.maxCurrent_regen = voltsToCounts(REGEN_OC_LIMIT / SHUNT_CURRENT_FACTOR);
     //configData.maxBusVoltage = voltsToCounts(BUS_OV_LIMIT / BUS_VOLTAGE_FACTOR);
@@ -549,6 +550,8 @@ void checkDrv8302Faults(){
 //Calculate the actual PWM duty cycle
 int calcDutyCycle(){
   int duty;
+
+	//motorCurrent_Avg = status.getFilteredMotorCurrent(); //should this go here insted of in the control loop function ??
 
   switch(configData.controlMode){
     case CONTROL_MODE_SPEED:
@@ -821,7 +824,7 @@ void adc0_isr(){
       ////////////Not working right now///////////////////
 			//if((status.iSense1_raw > configData.maxCurrent_motor) || (status.iSense2_raw > configData.maxCurrent_motor)){
 
-			if(status.getMotorCurrent_Raw() > configData.maxCurrent_motor){
+			if(status.getMotorCurrent_Raw() > configData.motorOcLimit){
         //Oh crap! We have exceded our limit
         // faultStatus |= FAULT_CODE_MOTOR_OVERCURRENT; //OC
         // //controllerState = MC_STATE_FAULT;
@@ -951,7 +954,7 @@ void commutate(){
                 (digitalReadFast(HALL2) << 1) |
                 (digitalReadFast(HALL1) << 0);
 
-    if(motorDirection == DIR_FORWARD){
+    if(status.motorDirection == DIR_FORWARD){
         commStep = hallOrder_1[hallState];
     }else{
         commStep = hallOrder_0[hallState];
@@ -1173,12 +1176,14 @@ void cmdPrintConfig(void){
   Serial.println(configData.currentControl_kI);
   Serial.print("Current PID kD = ");
   Serial.println(configData.currentControl_kD);
-  Serial.print("Max HW Current = ");
-  Serial.println(configData.maxCurrent_HW);
+  Serial.print("DRV HW Current limit = ");
+  Serial.println(configData.drvOcLimit);
+	Serial.print("Motor Current limit = ");
+  Serial.println(configData.motorOcLimit);
   Serial.print("Max Motor Current = ");
   Serial.println(configData.maxCurrent_motor);
-//  Serial.print("Config Version = ");
-//  Serial.println(configData.configVersion);
+  //Serial.print("Config Version = ");
+  //Serial.println(configData.configVersion);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1243,10 +1248,10 @@ void cmdHwCurrentLimit(){
 
   if(arg1 != NULL){// && arg2 != NULL){								 //see if we got the arguments
 		if(arg1[0] == 'w' && arg2 != NULL){								 //see if we are writing a value...
-			configData.maxCurrent_HW = voltsToCounts(atof(arg2) * FET_RDS); //Probably need some validation here
-			analogWrite(HW_OC_ADJ, configData.maxCurrent_HW);// for right now. should probably update this somewhere else
+			configData.drvOcLimit = voltsToCounts(atof(arg2) * FET_RDS); //Probably need some validation here
+			analogWrite(HW_OC_ADJ, configData.drvOcLimit);// for right now. should probably update this somewhere else
 		}else if(arg1[0] == 'r'){ //											 //or reading  a value
-			Serial.println(countsToVolts(configData.maxCurrent_HW)/FET_RDS);
+			Serial.println(countsToVolts(configData.drvOcLimit)/FET_RDS);
 		}
   }else{
     Serial.println("Did you forget somthing?");		//let user know they screwed somthing up

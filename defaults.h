@@ -7,10 +7,10 @@
 //#define DEFAULT_CONTROL_MODE CONTROL_MODE_DUTY     //0 = straight duty cycle control, 1 = speed control, 2 = current control
 #define MAX_THROTTLE_OUTPUT  2760  //This needs to be configurable
 #define MIN_THROTTLE         10    //This needs to be configurable
-#define MAX_MOTOR_RPM        2000  //This needs to be configurable
+#define MAX_MOTOR_RPM        3000  //This needs to be configurable
 #define STOPPED_RPM_THRESH   10    //At what RPM do transition to STOPPED
 
-#define DEFAULT_CURRENT_KP	 5			//Default value for PID loop kP
+#define DEFAULT_CURRENT_KP	 1			//Default value for PID loop kP
 #define DEFAULT_CURRENT_KI 	 0			//Default value for PID loop kI
 #define DEFAULT_CURRENT_KD	 0			//Default value for PID loop kD
 
@@ -27,9 +27,10 @@
 // but convert to raw counts when initializing the config data structure. This way
 // it will be easier to read, but won't matter "under the hood". Also, I can have
 // scailing factors defined for each and be able to tweak them later if necessary
+#define MAX_MOTOR_CURRENT 100		 //Max operating motor current (Just added, 7-28-16) This should set the top of the PID output range
 #define MOTOR_OC_LIMIT    150    //default motor overcurrent limit (Amps)
 #define BATT_OC_LIMIT     60     //default battery current limit (Amps) !Actually not sure about this one because its caclulated by multiplying phase current by % duty
-#define DRV_OC_LIMIT      180    //default HW (DRV8302) overcurrent limit in Amps
+#define DRV_OC_LIMIT      2869    //default HW (DRV8302) overcurrent limit in Amps [2869 = disabled]
 #define REGEN_OC_LIMIT	  20	   //default regen current limit in Amps
 #define BUS_OV_LIMIT      48     //software over voltage limit (Volts)
 #define BUS_UV_LIMIT      10	   //software under voltage limit (Volts)

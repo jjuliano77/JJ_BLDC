@@ -76,6 +76,7 @@ class BldcStatus{
       volatile unsigned int throttle;
 
       unsigned int lastThrottle;
+      bool motorDirection;
 
       RunningAverage fetTemp_RA;
       RunningAverage motorCurrent_RA;
