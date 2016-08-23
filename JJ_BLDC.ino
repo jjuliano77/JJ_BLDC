@@ -223,9 +223,9 @@ void setup() {
   pinMode(HALL2, INPUT);
   pinMode(HALL3, INPUT);
 
-	attachInterrupt(HALL1, hall_isr, CHANGE);
-	attachInterrupt(HALL2, hall_isr, CHANGE);
-	attachInterrupt(HALL3, hall_isr, CHANGE);
+	// attachInterrupt(HALL1, hall_isr, CHANGE);
+	// attachInterrupt(HALL2, hall_isr, CHANGE);
+	// attachInterrupt(HALL3, hall_isr, CHANGE);
 
   //pinMode(THROTTLE, INPUT);
 
@@ -333,6 +333,20 @@ void setup() {
 
   //Initialize timers and enable interrupts
   comTimer.begin(commutate, 20);
+
+	//Testing Hall sensor interupt based commutation
+	// ***********************************************************
+	//      7-28-16 It seems I have had both timer based commutation (above) and
+	//      the Hall interupts running at the same time for the last couple days. I
+	//      think one or the other would be best ;) I'm going to try just the Hall
+	//      interupts now. It's a bit of a leap of faith. I also changed from calling
+	//      hall_isr to just directly calling commutate.
+	// ************************************************************
+	attachInterrupt(HALL1, commutate, CHANGE);
+	attachInterrupt(HALL2, commutate, CHANGE);
+	attachInterrupt(HALL3, commutate, CHANGE);
+
+
   controlLoopTimer.begin(controlLoop, 1000);
   initPDB(); //initialize PBD
   FTM0_INT_ENABLE(); //Enable timer overflow interupt on FTM0 (Motor PWM output)
@@ -356,17 +370,24 @@ void loop() {
 
 	sCmd.readSerial();
 
-	//TO DO - Do UART (bluetooth) seperatly
-	//outputStatsBT();
 
-	//Do usb serial
-	//if(serialStreamFlag == true){
-		if(outputTimer > serialUpdatePeriod){
-			if(serialStreamFlag == true) outputStats();
-			outputStatsBT();
-			outputTimer = 0;
+	if(outputTimer > serialUpdatePeriod){
+		if(serialStreamFlag == true) outputStats();
+		outputStatsBT();
+		outputTimer = 0;
+	}
+
+  //***** Added on 7-29-16, rough try at setting a value via bluetooth & Bluetooth Electronics app *****
+	//Process any info coming from the bluetooth serial link
+  if (Serial1.available()){
+    char BluetoothData=Serial1.read(); //Get next character from bluetooth
+    if(BluetoothData=='C'){
+			//maxC_value=Serial1.parseInt(); //Read Red value
+			//configData.maxCurrent_motor = Serial1.parseInt(); //Read Red value
+			configData.maxCurrent_motor = voltsToCounts(Serial1.parseInt() / SHUNT_CURRENT_FACTOR); //Probably need some validation here
 		}
-	//}else
+  }
+
 	if(scopeCurrent1.samplesReady() /*&& scopeCurrent2.samplesReady()*/
 	&& scopeBemfVolts.samplesReady() && scopeBusVolts.samplesReady()){
 		//This is just to test the acquisitionBuffer class
@@ -612,12 +633,14 @@ void outputStats(){
   // Serial.print('\t');
   Serial.print(tachometer.getMPH(),2);
   Serial.print('\t');
- // Serial.print(drv_pwrGood);
- // Serial.print('\t');
- // Serial.print(drv_fault);
- // Serial.print('\t');
- // Serial.print(drv_octw);
- // Serial.print('\t');
+
+ Serial.print(drv_pwrGood);
+ Serial.print('\t');
+ Serial.print(drv_fault);
+ Serial.print('\t');
+ Serial.print(drv_octw);
+ Serial.print('\t');
+
  Serial.print(faultStatus,BIN); //print out faultStatus bits
  Serial.print('\t');
  Serial.print(hallState,BIN);

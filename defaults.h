@@ -43,7 +43,7 @@
 //1 second wait now just for testing
 #define ALIGNMENT_TIMOUT 50000  //Time to wait for alignment in uS
 
-#define RUNNING_AVG_BLOCK_SIZE 100
+#define RUNNING_AVG_BLOCK_SIZE 20 // 7-28-16 reduced this to see if it makes the current control loop more responsive (less OC trips)
 //*******************
 //Timing config values
 #define PWMFREQ 10000            //PWM frequency in hz. This should be a configurable parameter eventually
